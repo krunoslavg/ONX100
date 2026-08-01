@@ -20,10 +20,7 @@ Console.CancelKeyPress += (_, eventArgs) =>
 
 while (!applicationCancellation.IsCancellationRequested && !exitRequested)
 {
-    using var connectionCancellation =
-        CancellationTokenSource.CreateLinkedTokenSource(
-            applicationCancellation.Token);
-
+    using var connectionCancellation = CancellationTokenSource.CreateLinkedTokenSource( applicationCancellation.Token);
     using var client = new TcpClient();
 
     NetworkStream? clientStream = null;
@@ -118,7 +115,33 @@ while (!applicationCancellation.IsCancellationRequested && !exitRequested)
 
                 continue;
             }
-            
+
+            if (command.Equals("drop-test", StringComparison.OrdinalIgnoreCase))
+            {
+                WriteStatus("Testiram 15 ispravnih PWR queryja...",ConsoleColor.DarkYellow);
+
+                for (int i = 1; i <= 15; i++)
+                {
+                    WriteStatus($"[VALID {i}/15] PWR ?", ConsoleColor.DarkGray);
+
+                    await clientStream.WriteAsync(Encoding.ASCII.GetBytes("PWR ?\r"), applicationCancellation.Token);
+                    await Task.Delay(750, applicationCancellation.Token);
+                }
+
+                WriteStatus("Testiram 15 neispravnih IN 5 naredbi...", ConsoleColor.DarkYellow);
+
+                for (int i = 1; i <= 15; i++)
+                {
+                    WriteStatus($"[INVALID {i}/15] IN 5", ConsoleColor.DarkGray);
+
+                    await clientStream.WriteAsync(Encoding.ASCII.GetBytes("IN 5\r"), applicationCancellation.Token);
+                    await Task.Delay(750, applicationCancellation.Token);
+                }
+
+                await clientStream.FlushAsync(applicationCancellation.Token);
+
+                continue;
+            }
             // Ručno prekida trenutnu vezu i otvara novu.
             if (command.Equals("reconnect", StringComparison.OrdinalIgnoreCase))
             {
@@ -148,10 +171,7 @@ while (!applicationCancellation.IsCancellationRequested && !exitRequested)
                 await clientStream.WriteAsync(data, applicationCancellation.Token);
                 await clientStream.FlushAsync( applicationCancellation.Token);
             }
-            catch (Exception exception)
-                when (exception is IOException
-                      or SocketException
-                      or ObjectDisposedException)
+            catch (Exception exception) when (exception is IOException or SocketException or ObjectDisposedException)
             {
                 WriteStatus( $"Slanje nije uspjelo: {exception.Message}", ConsoleColor.Red);
 
