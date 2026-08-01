@@ -4,3 +4,5 @@
 /.vs
 /Onx100.Driver/bin
 /Onx100.Driver/obj
+/Onx100.Driver.Tests/obj
+/Onx100.Driver.Tests/bin
