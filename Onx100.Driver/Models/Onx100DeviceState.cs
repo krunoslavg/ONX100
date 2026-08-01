@@ -5,6 +5,7 @@ namespace Onx100.Driver.Models
 {
     public sealed record Onx100DeviceState
     {
+        /*************** PUBLIC PROPERTIES ********************/
         public Onx100PowerState PowerState { get; init; } = Onx100PowerState.Unknown;
         public int? SelectedInput {  get; init; }
         public int? Volume { get; init; }

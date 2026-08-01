@@ -2,6 +2,7 @@
 {
     public sealed class Onx100Options
     {
+        /*************** PUBLIC PROPERTIES ********************/
         public string Host { get; init; } = "127.0.0.1";
         public int Port { get; init; } = 4999;
         public TimeSpan ConnectionTimeout { get; init; } = TimeSpan.FromSeconds(5);

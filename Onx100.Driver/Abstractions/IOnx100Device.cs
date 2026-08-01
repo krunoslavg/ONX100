@@ -7,12 +7,17 @@ namespace Onx100.Driver.Abstractions
 {
     public interface IOnx100Device : IAsyncDisposable
     {
+        /*************** PUBLIC PROPERTIES ********************/
         Onx100ConnectionState ConnectionState { get; }
         Onx100DeviceState DeviceState { get; }
-        
+
+
+        /*************** PUBLIC EVENTS ********************/
         event EventHandler<Onx100ConnectionStateChangedEventArgs>? Onx100ConnectionStateChanged;
         event EventHandler<Onx100DeviceStateChangedEventArgs>? Onx100DeviceStateChanged;
 
+
+        /*************** PUBLIC METHODS ********************/
         Task ConnectAsync(CancellationToken cancellationToken = default);
         Task DisconnectAsync(CancellationToken cancellationToken = default);
         Task PowerOnAsync(CancellationToken cancellationToken = default);   

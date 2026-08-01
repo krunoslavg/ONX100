@@ -13,13 +13,16 @@ namespace Onx100.Driver
         private Onx100ConnectionState connectionState = Onx100ConnectionState.Disconnected;
         private Onx100DeviceState deviceState = new Onx100DeviceState();
 
+
         /************** PUBLIC PROPERTIES ****************/
         public Onx100ConnectionState ConnectionState => connectionState;
         public Onx100DeviceState DeviceState => deviceState;
 
+
         /************** PUBLIC EVENTS ****************/
         public event EventHandler<Onx100ConnectionStateChangedEventArgs>? Onx100ConnectionStateChanged;
         public event EventHandler<Onx100DeviceStateChangedEventArgs>? Onx100DeviceStateChanged;
+
 
         /************** CONSTRUCTOR ****************/
         public Onx100Device(Onx100Options? options = null)
