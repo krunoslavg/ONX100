@@ -84,6 +84,41 @@ while (!applicationCancellation.IsCancellationRequested && !exitRequested)
 
                 continue;
             }
+
+            if (command.Equals("lf-test", StringComparison.OrdinalIgnoreCase))
+            {
+                // LF umjesto dokumentiranog CR terminatora.
+                await clientStream.WriteAsync(Encoding.ASCII.GetBytes("PWR ?\n"), applicationCancellation.Token);
+                await Task.Delay(1000, applicationCancellation.Token);
+
+                await clientStream.FlushAsync(applicationCancellation.Token);
+
+                continue;
+            }
+
+            if (command.Equals("crlf-test", StringComparison.OrdinalIgnoreCase))
+            {
+                byte[] testData = Encoding.ASCII.GetBytes("PWR ?\r\n");
+
+                await clientStream.WriteAsync(testData, applicationCancellation.Token);
+                await clientStream.FlushAsync(applicationCancellation.Token);
+                continue;
+            }
+
+            if (command.Equals("fragment-test", StringComparison.OrdinalIgnoreCase))
+            {
+                await clientStream.WriteAsync(Encoding.ASCII.GetBytes("PW"), applicationCancellation.Token);
+                await Task.Delay(300, applicationCancellation.Token);
+
+                await clientStream.WriteAsync(Encoding.ASCII.GetBytes("R ?"), applicationCancellation.Token);
+                await Task.Delay(300, applicationCancellation.Token);
+
+                await clientStream.WriteAsync(Encoding.ASCII.GetBytes("\r"), applicationCancellation.Token);
+                await clientStream.FlushAsync(applicationCancellation.Token);
+
+                continue;
+            }
+            
             // Ručno prekida trenutnu vezu i otvara novu.
             if (command.Equals("reconnect", StringComparison.OrdinalIgnoreCase))
             {
