@@ -43,13 +43,9 @@ try
         string? command = Console.ReadLine();
 
         // EOF, exit ili quit završavaju rad klijenta.
-        if (command is null ||
-            command.Equals("exit", StringComparison.OrdinalIgnoreCase) ||
-            command.Equals("quit", StringComparison.OrdinalIgnoreCase))
-        {
+        if (command is null || command.Equals("exit", StringComparison.OrdinalIgnoreCase) || command.Equals("quit", StringComparison.OrdinalIgnoreCase))        
             break;
-        }
-
+        
         // Lokalna naredba: ne šalje se simulatoru.
         if (command.Equals("clear", StringComparison.OrdinalIgnoreCase))
         {
@@ -60,10 +56,9 @@ try
         }
 
         // Prazan unos se ignorira.
-        if (string.IsNullOrWhiteSpace(command))
-        {
+        if (string.IsNullOrWhiteSpace(command))        
             continue;
-        }
+        
 
         // ONX100 protokol očekuje ASCII naredbu završenu CR znakom (\r).
         byte[] data = Encoding.ASCII.GetBytes(command + "\r");
@@ -98,9 +93,7 @@ catch (IOException exception)
     Console.WriteLine($"Greška veze: {exception.Message}");
 }
 
-static async Task ReceiveLoopAsync(
-    NetworkStream stream,
-    CancellationToken cancellationToken)
+static async Task ReceiveLoopAsync(NetworkStream stream, CancellationToken cancellationToken)
 {
     // Buffer predstavlja samo veličinu jednog TCP čitanja.
     // Ne mora biti velik kao cijela poruka jer se nepotpune poruke
@@ -125,8 +118,7 @@ static async Task ReceiveLoopAsync(
 
         // Dodaje novoprimljene znakove iza eventualno nepotpune poruke
         // koja je ostala od prethodnog čitanja.
-        pendingString.Append(
-            Encoding.ASCII.GetString(buffer, 0, bytesRead));
+        pendingString.Append(Encoding.ASCII.GetString(buffer, 0, bytesRead));
 
         // Jedan TCP read može sadržavati jednu, više ili samo dio poruke.
         // Zato izdvajamo sve potpune poruke koje trenutno postoje u bufferu.
@@ -135,15 +127,11 @@ static async Task ReceiveLoopAsync(
             string current = pendingString.ToString();
 
             // Odgovori simulatora završavaju CRLF sekvencom (\r\n).
-            int terminatorIndex = current.IndexOf(
-                "\r\n",
-                StringComparison.Ordinal);
+            int terminatorIndex = current.IndexOf("\r\n", StringComparison.Ordinal);
 
             // Nema još cijele poruke; čekamo sljedeći TCP read.
-            if (terminatorIndex < 0)
-            {
-                break;
-            }
+            if (terminatorIndex < 0)            
+                break;            
 
             // Izdvaja sadržaj poruke bez CRLF terminatora.
             string message = current[..terminatorIndex];
