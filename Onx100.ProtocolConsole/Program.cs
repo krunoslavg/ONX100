@@ -181,8 +181,7 @@ while (!applicationCancellation.IsCancellationRequested && !exitRequested)
             }
         }
     }
-    catch (OperationCanceledException)
-        when (applicationCancellation.IsCancellationRequested)
+    catch (OperationCanceledException) when (applicationCancellation.IsCancellationRequested)
     {
         // Normalno zatvaranje aplikacije.
     }
@@ -302,9 +301,7 @@ static async Task ReceiveLoopAsync(NetworkStream stream, CancellationToken cance
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            int bytesRead = await stream.ReadAsync(
-                buffer,
-                cancellationToken);
+            int bytesRead = await stream.ReadAsync(buffer, cancellationToken);
 
             // ReadAsync vraća 0 kada simulator zatvori vezu.
             if (bytesRead == 0)
@@ -313,11 +310,7 @@ static async Task ReceiveLoopAsync(NetworkStream stream, CancellationToken cance
                 return;
             }
 
-            pendingString.Append(
-                Encoding.ASCII.GetString(
-                    buffer,
-                    0,
-                    bytesRead));
+            pendingString.Append(Encoding.ASCII.GetString(buffer, 0, bytesRead));
 
             // Jedan TCP read može sadržavati dio poruke
             // ili više CRLF-završenih poruka.
@@ -325,21 +318,15 @@ static async Task ReceiveLoopAsync(NetworkStream stream, CancellationToken cance
             {
                 string current = pendingString.ToString();
 
-                int terminatorIndex = current.IndexOf(
-                    "\r\n",
-                    StringComparison.Ordinal);
+                int terminatorIndex = current.IndexOf("\r\n", StringComparison.Ordinal);
 
-                if (terminatorIndex < 0)
-                {
+                if (terminatorIndex < 0)                
                     break;
-                }
+                
 
                 string message = current[..terminatorIndex];
-
-                pendingString.Remove(
-                    0,
-                    terminatorIndex + 2);
-
+                 
+                pendingString.Remove(0, terminatorIndex + 2);
                 onMessage(message);
             }
         }
