@@ -23,11 +23,11 @@ namespace Onx100.Driver.Abstractions
         Task PowerOnAsync(CancellationToken cancellationToken = default);   
         Task PowerOffAsync(CancellationToken cancellationToken = default); 
         Task <Onx100PowerState> GetPowerStateAsync(CancellationToken cancellationToken = default);
-        Task SelectInputAsync(int input,  CancellationToken cancellationToken = default);
         Task<int> GetSelectedInputAsync(CancellationToken cancellationToken = default);
-        Task SetVolumeAsync(int volume, CancellationToken cancellationToken = default);
+        Task SelectInputAsync(int input,  CancellationToken cancellationToken = default);
         Task<int> GetVolumeAsync(CancellationToken cancellationToken = default);
+        Task SetVolumeAsync(int volume, CancellationToken cancellationToken = default);
+        Task<bool> GetMuteAsync(CancellationToken cancellationToken = default);
         Task SetMuteAsync(bool mute, CancellationToken cancellationToken = default);
-        Task GetMuteAsync(CancellationToken cancellationToken = default);
     }
 }
