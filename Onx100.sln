@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onx100.Driver", "Onx100.Dri
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onx100.Driver.Tests", "Onx100.Driver.Tests\Onx100.Driver.Tests.csproj", "{62587C81-288C-4B23-A511-F4B6AFECE7FD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onx100.Demo", "Onx100.Demo\Onx100.Demo.csproj", "{E47F29F5-28D0-4117-8BF0-5460AD30B1AB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{62587C81-288C-4B23-A511-F4B6AFECE7FD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{62587C81-288C-4B23-A511-F4B6AFECE7FD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{62587C81-288C-4B23-A511-F4B6AFECE7FD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E47F29F5-28D0-4117-8BF0-5460AD30B1AB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E47F29F5-28D0-4117-8BF0-5460AD30B1AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E47F29F5-28D0-4117-8BF0-5460AD30B1AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E47F29F5-28D0-4117-8BF0-5460AD30B1AB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
