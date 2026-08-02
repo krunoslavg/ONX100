@@ -74,6 +74,8 @@ namespace Onx100.Driver
                 if (connectionState == Onx100ConnectionState.Connected)
                     return;
 
+                await DisconnectCoreAsync().ConfigureAwait(false);
+
                 SetConnectionState(Onx100ConnectionState.Connecting);
                 messageFramer.Reset();
 

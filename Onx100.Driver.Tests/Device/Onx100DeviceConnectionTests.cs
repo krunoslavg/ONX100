@@ -110,6 +110,25 @@ namespace Onx100.Driver.Tests.Device
             Assert.Equal(Onx100ConnectionState.Disconnected, device.ConnectionState);
         }
 
+        [Fact]
+        public async Task ConnectAsync_AfterRemoteDisconnect_ReconnectsTransport()
+        {
+            FakeOnx100Transport transport = new FakeOnx100Transport();
+            Onx100Options options = CreateOptions();
+            await using Onx100Device device = new Onx100Device(options, transport);
+
+            await device.ConnectAsync();
+
+            transport.QueueRemoteDisconnect();
+
+            await WaitUntilAsync(() => device.ConnectionState == Onx100ConnectionState.Disconnected, TimeSpan.FromSeconds(1));
+
+            await device.ConnectAsync();
+
+            Assert.True(transport.IsConnected);
+            Assert.Equal(Onx100ConnectionState.Connected, device.ConnectionState);
+        }
+
 
         /***************** PRIVATE METHODS ********************/
         private static Onx100Options CreateOptions()

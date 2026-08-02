@@ -18,6 +18,9 @@ namespace Onx100.Driver.Tests.TestDoubles
         public Task ConnectAsync(string host, int port, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (IsConnected)
+                throw new InvalidOperationException("Transport is already connected!");
             IsConnected = true;
             return Task.CompletedTask;
         }
