@@ -8,3 +8,6 @@
 /Onx100.Driver.Tests/bin
 /Onx100.Demo/bin
 /Onx100.Demo/obj
+/Onx100.Api/obj
+/Onx100.Api/bin
+/Onx100.Api/Onx100.Api.csproj.user
