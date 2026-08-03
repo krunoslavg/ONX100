@@ -18,7 +18,7 @@ device.Onx100ConnectionStateChanged += (_, eventArgs) =>
     Console.WriteLine($"Connection: {eventArgs.PreviousState} -> {eventArgs.CurrentState}");
 };
 
-device.Onx100DeviceStateChanged+= (_, eventArgs) =>
+device.Onx100DeviceStateChanged += (_, eventArgs) =>
 {
     Onx100DeviceState state = eventArgs.CurrentState;
     Console.WriteLine($"State: power={state.PowerState}, input={state.SelectedInput}, volume={state.Volume}, muted={state.IsMuted}");
@@ -41,19 +41,21 @@ try
     Console.WriteLine("Disabling mute...");
     await device.SetMuteAsync(false);
 
+    Console.WriteLine("Reading final device state...");
+
     int input = await device.GetSelectedInputAsync();
     int volume = await device.GetVolumeAsync();
     bool muted = await device.GetMuteAsync();
 
     Console.WriteLine();
     Console.WriteLine($"Final state: power={device.DeviceState.PowerState}, input={input}, volume={volume}, muted={muted}");
-    Console.WriteLine("Press Enter to disconnect.");
-
-    Console.ReadLine();
 
     await device.DisconnectAsync();
+
+    Console.WriteLine("Demo completed successfully.");
 }
 catch (Exception exception)
 {
-    Console.Error.WriteLine($"Driver error: {exception.Message}");
+    Console.Error.WriteLine($"Driver error: {exception}");
+    Environment.ExitCode = 1;
 }

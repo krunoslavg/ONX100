@@ -8,20 +8,30 @@ namespace Onx100.Driver.Tests.TestDoubles
 {
     internal sealed class FakeOnx100Transport : IOnx100Transport
     {
+        /*********** PRIVATE MEMBERS ***********/
         private readonly Channel<byte[]> incomingData = Channel.CreateUnbounded<byte[]>();
 
         public ConcurrentQueue<byte[]> SentData { get; } = new();
         public Func<ReadOnlyMemory<byte>, CancellationToken, Task>? OnSendAsync { get; set; }
+        public string? ConnectResponse { get; set; } = "*HELLO ONX-100 FW:2.13\r\n";
         public bool IsConnected { get; private set; }
 
 
+        /*********** PUBLIC METHODS ***********/
         public Task ConnectAsync(string host, int port, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             if (IsConnected)
                 throw new InvalidOperationException("Transport is already connected!");
+
             IsConnected = true;
+
+            if (ConnectResponse is not null)
+            {
+                QueueIncoming(ConnectResponse);
+            }
+
             return Task.CompletedTask;
         }
 
@@ -63,6 +73,9 @@ namespace Onx100.Driver.Tests.TestDoubles
 
         public void QueueIncoming(string message)
         {
+            if (!IsConnected)            
+                return;
+            
             byte[] data = Encoding.ASCII.GetBytes(message);
             incomingData.Writer.TryWrite(data);
         }

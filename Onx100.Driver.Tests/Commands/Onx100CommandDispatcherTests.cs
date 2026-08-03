@@ -75,23 +75,24 @@ namespace Onx100.Driver.Tests.Commands
         }
 
         [Fact]
-        public async Task ExecuteAsync_Timeout_ThrowsAndAllowsNextCommand()
+        public async Task ExecuteAsync_Timeout_InvalidatesSessionUntilReset()
         {
             FakeOnx100Transport transport = new FakeOnx100Transport();
             Onx100CommandDispatcher dispatcher = new Onx100CommandDispatcher(transport, TimeSpan.FromMilliseconds(100));
-            Onx100TimeoutException exception = await Assert.ThrowsAsync<Onx100TimeoutException>(() => dispatcher.ExecuteAsync("PWR ?\r", Onx100MessageKind.PowerResponse));
 
-            Assert.Equal("PWR ?", exception.Command);
-            Assert.Equal(TimeSpan.FromMilliseconds(100), exception.Timeout);
+            await Assert.ThrowsAsync<Onx100TimeoutException>(() => dispatcher.ExecuteAsync("PWR ?\r", Onx100MessageKind.PowerResponse));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => dispatcher.ExecuteAsync("MUTE ON\r", Onx100MessageKind.OkResponse));
+
+            await dispatcher.ResetSessionAsync();
 
             transport.OnSendAsync = (_, _) =>
             {
                 dispatcher.TryHandleMessage(CreateMessage(Onx100MessageKind.OkResponse));
-
                 return Task.CompletedTask;
             };
 
-            Onx100ProtocolMessage? response = await dispatcher.ExecuteAsync("MUTE ON\r", Onx100MessageKind.OkResponse);
+            Onx100ProtocolMessage response = await dispatcher.ExecuteAsync("MUTE ON\r", Onx100MessageKind.OkResponse);
 
             Assert.Equal(Onx100MessageKind.OkResponse, response.Kind);
         }

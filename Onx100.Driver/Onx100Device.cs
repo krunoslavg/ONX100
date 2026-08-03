@@ -22,6 +22,8 @@ namespace Onx100.Driver
         private readonly Onx100CommandDispatcher commandDispatcher;
         private readonly SemaphoreSlim lifecycleLock = new(1, 1); 
         private readonly SemaphoreSlim powerOperationLock = new(1, 1);
+        private readonly object connectionHandshakeLock = new();
+        private TaskCompletionSource<bool>? connectionHandshakeCompletion;
         private TaskCompletionSource<Onx100PowerState>? powerStateCompletion;
         private Onx100PowerState? awaitedPowerState;
         private CancellationTokenSource? receiveLoopCancellation;
@@ -79,23 +81,43 @@ namespace Onx100.Driver
                 SetConnectionState(Onx100ConnectionState.Connecting);
                 messageFramer.Reset();
 
-                using CancellationTokenSource? timeoutCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
+                using CancellationTokenSource timeoutCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeoutCancellation.CancelAfter(deviceOptions.ConnectionTimeout);
+
+                TaskCompletionSource<bool>? handshakeCompletion = null;
 
                 try
                 {
                     await transport.ConnectAsync(deviceOptions.Host, deviceOptions.Port, timeoutCancellation.Token).ConfigureAwait(false);
+                    await commandDispatcher.ResetSessionAsync().ConfigureAwait(false);
 
-                    SetConnectionState(Onx100ConnectionState.Connected);
+                    handshakeCompletion = CreateConnectionHandshakeWaiter();
 
                     receiveLoopCancellation = new CancellationTokenSource();
                     receiveLoopTask = ReceiveLoopAsync(receiveLoopCancellation.Token);
+
+                    try
+                    {
+                        await handshakeCompletion.Task.WaitAsync(timeoutCancellation.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        throw new TimeoutException($"The ONX-100 connection handshake did not complete within {deviceOptions.ConnectionTimeout}.");
+                    }
+
+                    SetConnectionState(Onx100ConnectionState.Connected);
                 }
                 catch
                 {
-                    SetConnectionState(Onx100ConnectionState.Disconnected);
+                    await DisconnectCoreAsync().ConfigureAwait(false);
                     throw;
+                }
+                finally
+                {
+                    if (handshakeCompletion is not null)
+                    {
+                        ClearConnectionHandshakeWaiter(handshakeCompletion);
+                    }
                 }
             }
             finally
@@ -147,7 +169,7 @@ namespace Onx100.Driver
         {
             EnsureConnected();
 
-            Onx100ProtocolMessage? response = await commandDispatcher.ExecuteAsync(Onx100CommandFormatter.GetPower(), Onx100MessageKind.PowerResponse, cancellationToken: cancellationToken);
+            Onx100ProtocolMessage? response = await ExecuteCommandAsync(Onx100CommandFormatter.GetPower(), Onx100MessageKind.PowerResponse, cancellationToken: cancellationToken);
             Onx100PowerState powerState = response.PowerState ?? throw new InvalidOperationException( "Power response has no power state.");
 
             return powerState;
@@ -167,7 +189,7 @@ namespace Onx100.Driver
         {
             EnsureConnected();
 
-            Onx100ProtocolMessage? response = await commandDispatcher.ExecuteAsync(Onx100CommandFormatter.GetInput(), Onx100MessageKind.InputResponse, cancellationToken: cancellationToken);
+            Onx100ProtocolMessage? response = await ExecuteCommandAsync(Onx100CommandFormatter.GetInput(), Onx100MessageKind.InputResponse, cancellationToken: cancellationToken);
             int input = response.Input ?? throw new InvalidOperationException("Input response has no input value.");
 
             return input;
@@ -179,7 +201,7 @@ namespace Onx100.Driver
 
             EnsureConnected();
 
-            await commandDispatcher.ExecuteAsync(command,Onx100MessageKind.OkResponse, cancellationToken: cancellationToken);
+            await ExecuteCommandAsync(command,Onx100MessageKind.OkResponse, cancellationToken: cancellationToken);
 
             UpdateSelectedInput(input);
         }
@@ -188,7 +210,7 @@ namespace Onx100.Driver
         {
             EnsureConnected();
 
-            Onx100ProtocolMessage? response = await commandDispatcher.ExecuteAsync(Onx100CommandFormatter.GetMute(),Onx100MessageKind.MuteResponse,cancellationToken: cancellationToken);
+            Onx100ProtocolMessage? response = await ExecuteCommandAsync(Onx100CommandFormatter.GetMute(),Onx100MessageKind.MuteResponse,cancellationToken: cancellationToken);
 
             var muted = response.IsMuted ?? throw new InvalidOperationException("Mute response has no mute state.");
 
@@ -199,7 +221,7 @@ namespace Onx100.Driver
         {
             EnsureConnected();
 
-            await commandDispatcher.ExecuteAsync(Onx100CommandFormatter.SetMute(mute),Onx100MessageKind.OkResponse, cancellationToken: cancellationToken);
+            await ExecuteCommandAsync(Onx100CommandFormatter.SetMute(mute),Onx100MessageKind.OkResponse, cancellationToken: cancellationToken);
 
             UpdateMuteState(mute);
         }
@@ -208,7 +230,7 @@ namespace Onx100.Driver
         {
             EnsureConnected();
 
-            Onx100ProtocolMessage? response = await commandDispatcher.ExecuteAsync(Onx100CommandFormatter.GetVolume(), Onx100MessageKind.VolumeResponse, cancellationToken: cancellationToken);
+            Onx100ProtocolMessage? response = await ExecuteCommandAsync(Onx100CommandFormatter.GetVolume(), Onx100MessageKind.VolumeResponse, cancellationToken: cancellationToken);
             int volume = response.Volume ?? throw new InvalidOperationException("Volume response has no volume value.");
             
             return volume;        
@@ -220,7 +242,7 @@ namespace Onx100.Driver
 
             EnsureConnected();
 
-            await commandDispatcher.ExecuteAsync(command, Onx100MessageKind.OkResponse, cancellationToken: cancellationToken);
+            await ExecuteCommandAsync(command, Onx100MessageKind.OkResponse, cancellationToken: cancellationToken);
 
             UpdateVolume(volume);
         }
@@ -247,16 +269,41 @@ namespace Onx100.Driver
 
         private void SetConnectionState(Onx100ConnectionState newState)
         {
-            var previousState = connectionState;
+            Onx100ConnectionState previousState = connectionState;
 
             if (previousState == newState)
-            
+            {
                 return;
-            
+            }
 
             connectionState = newState;
 
-            Onx100ConnectionStateChanged?.Invoke(this, new Onx100ConnectionStateChangedEventArgs(previousState, newState));
+            RaiseConnectionStateChanged(previousState, newState);
+        }
+
+        private void RaiseConnectionStateChanged(Onx100ConnectionState previousState, Onx100ConnectionState currentState)
+        {
+            EventHandler<Onx100ConnectionStateChangedEventArgs>? handlers = Onx100ConnectionStateChanged;
+
+            if (handlers is null)
+            {
+                return;
+            }
+
+            Onx100ConnectionStateChangedEventArgs eventArgs = new Onx100ConnectionStateChangedEventArgs(previousState, currentState);
+
+            foreach (Delegate subscriber in handlers.GetInvocationList())
+            {
+                try
+                {
+                    EventHandler<Onx100ConnectionStateChangedEventArgs> handler = (EventHandler<Onx100ConnectionStateChangedEventArgs>)subscriber;
+                    handler(this, eventArgs);
+                }
+                catch (Exception)
+                {
+                    // A consumer event handler must not interrupt the driver lifecycle.
+                }
+            }
         }
 
         private void ThrowIfDisposed()
@@ -278,10 +325,7 @@ namespace Onx100.Driver
                     {
                         IOException exception = new IOException("The device closed the TCP connection.");
 
-                        commandDispatcher.TryFailPendingCommand(exception);
-                        FailPowerStateWaiter(exception);
-                        SetConnectionState(Onx100ConnectionState.Disconnected);
-
+                        await HandleRemoteSessionEndAsync(exception).ConfigureAwait(false);
                         return;
                     }
 
@@ -289,9 +333,14 @@ namespace Onx100.Driver
 
                     foreach (string? rawMessage in rawMessages)
                     {
-                        Onx100ProtocolMessage? message = protocolParser.Parse(rawMessage);
+                        Onx100ProtocolMessage message = protocolParser.Parse(rawMessage);
+                        Exception? sessionEndException = HandleIncomingMessage(message);
 
-                        HandleIncomingMessage(message);
+                        if (sessionEndException is not null)
+                        {
+                            await HandleRemoteSessionEndAsync(sessionEndException).ConfigureAwait(false);
+                            return;
+                        }
                     }
                 }
             }
@@ -301,16 +350,17 @@ namespace Onx100.Driver
             }
             catch (Exception exception)
             {
-                commandDispatcher.TryFailPendingCommand(exception);
-                FailPowerStateWaiter(exception);
-                SetConnectionState(Onx100ConnectionState.Disconnected);
+                await HandleRemoteSessionEndAsync(exception).ConfigureAwait(false);
             }
         }
 
-        private void HandleIncomingMessage(Onx100ProtocolMessage message)
+        private Exception? HandleIncomingMessage(Onx100ProtocolMessage message)
         {
             switch (message.Kind)
             {
+                case Onx100MessageKind.Hello:
+                    CompleteConnectionHandshake();
+                    break;
                 case Onx100MessageKind.PowerResponse:
                     UpdatePowerState(message.PowerState ?? throw new InvalidOperationException("Power response has no power state."));
                     break;
@@ -340,25 +390,38 @@ namespace Onx100.Driver
 
             if (commandDispatcher.TryHandleMessage(message))
             {
-                return;
+                return null;
             }
 
-            switch (message.Kind)
+            return message.Kind switch
             {
-                case Onx100MessageKind.Bye:
-                    IOException exception = new IOException("The device ended the TCP session.");
-                    commandDispatcher.TryFailPendingCommand(exception);
-                    FailPowerStateWaiter(exception);
-                    SetConnectionState(Onx100ConnectionState.Disconnected);
-                    break;
+                Onx100MessageKind.Bye => new IOException("The device ended the TCP session."),
+                Onx100MessageKind.Busy => new IOException("The device rejected the TCP session because it is busy."),
+                _ => null
+            };
+        }
 
-                case Onx100MessageKind.Hello:
-                case Onx100MessageKind.Busy:
-                case Onx100MessageKind.Unknown:
-                    break;
+        private async Task HandleRemoteSessionEndAsync(Exception exception)
+        {
+            FailConnectionHandshake(exception);
+            commandDispatcher.TryFailPendingCommand(exception);
+            FailPowerStateWaiter(exception);
+
+            try
+            {
+                await transport.DisconnectAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Best-effort cleanup after the remote endpoint has ended the session.
+            }
+            finally
+            {
+                messageFramer.Reset();
+                SetConnectionState(Onx100ConnectionState.Disconnected);
             }
         }
-        
+
         private async Task DisconnectCoreAsync()
         {
             if (connectionState != Onx100ConnectionState.Disconnected)            
@@ -434,7 +497,32 @@ namespace Onx100.Driver
                 deviceState = currentState;
             }
 
-            Onx100DeviceStateChanged?.Invoke(this, new Onx100DeviceStateChangedEventArgs(previousState, currentState));
+            RaiseDeviceStateChanged(previousState, currentState);
+        }
+
+        private void RaiseDeviceStateChanged(Onx100DeviceState previousState, Onx100DeviceState currentState)
+        {
+            EventHandler<Onx100DeviceStateChangedEventArgs>? handlers = Onx100DeviceStateChanged;
+
+            if (handlers is null)
+            {
+                return;
+            }
+
+            Onx100DeviceStateChangedEventArgs eventArgs = new Onx100DeviceStateChangedEventArgs(previousState, currentState);
+
+            foreach (Delegate subscriber in handlers.GetInvocationList())
+            {
+                try
+                {
+                    EventHandler<Onx100DeviceStateChangedEventArgs> handler = (EventHandler<Onx100DeviceStateChangedEventArgs>)subscriber;
+                    handler(this, eventArgs);
+                }
+                catch (Exception)
+                {
+                    // A consumer event handler must not terminate the driver receive loop.
+                }
+            }
         }
 
         private void UpdateSelectedInput(int input)
@@ -480,7 +568,7 @@ namespace Onx100.Driver
                 {
                     if (currentState != transitionState)
                     {
-                        await commandDispatcher.ExecuteAsync(command, Onx100MessageKind.OkResponse, cancellationToken: cancellationToken) .ConfigureAwait(false);
+                        await ExecuteCommandAsync(command, Onx100MessageKind.OkResponse, cancellationToken: cancellationToken) .ConfigureAwait(false);
 
                         UpdateDeviceState(state => state.PowerState == targetState ? state : state with { PowerState = transitionState });
                     }
@@ -569,6 +657,93 @@ namespace Onx100.Driver
             }
 
             completion?.TrySetException(exception);
+        }
+
+        private async Task<Onx100ProtocolMessage> ExecuteCommandAsync(string command, Onx100MessageKind expectedResponseKind, CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await commandDispatcher.ExecuteAsync(command, expectedResponseKind, cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
+            catch (Onx100TimeoutException)
+            {
+                await DisconnectInvalidatedSessionAsync().ConfigureAwait(false);
+                throw;
+            }
+            catch (OperationCanceledException) when (commandDispatcher.IsSessionInvalidated())
+            {
+                await DisconnectInvalidatedSessionAsync().ConfigureAwait(false);
+                throw;
+            }
+        }
+
+        private async Task DisconnectInvalidatedSessionAsync()
+        {
+            await lifecycleLock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+
+            try
+            {
+                if (!disposed)
+                {
+                    await DisconnectCoreAsync().ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                lifecycleLock.Release();
+            }
+        }
+
+        private TaskCompletionSource<bool> CreateConnectionHandshakeWaiter()
+        {
+            TaskCompletionSource<bool> completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            lock (connectionHandshakeLock)
+            {
+                if (connectionHandshakeCompletion is not null)
+                {
+                    throw new InvalidOperationException("Another connection handshake is already pending.");
+                }
+
+                connectionHandshakeCompletion = completion;
+            }
+
+            return completion;
+        }
+
+        private void CompleteConnectionHandshake()
+        {
+            TaskCompletionSource<bool>? completion;
+
+            lock (connectionHandshakeLock)
+            {
+                completion = connectionHandshakeCompletion;
+            }
+
+            completion?.TrySetResult(true);
+        }
+
+        private void FailConnectionHandshake(Exception exception)
+        {
+            TaskCompletionSource<bool>? completion;
+
+            lock (connectionHandshakeLock)
+            {
+                completion = connectionHandshakeCompletion;
+            }
+
+            completion?.TrySetException(exception);
+        }
+
+        private void ClearConnectionHandshakeWaiter(TaskCompletionSource<bool> completion)
+        {
+            lock (connectionHandshakeLock)
+            {
+                if (ReferenceEquals(connectionHandshakeCompletion, completion))
+                {
+                    connectionHandshakeCompletion = null;
+                }
+            }
         }
     }
 }

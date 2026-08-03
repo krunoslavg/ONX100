@@ -54,6 +54,35 @@ namespace Onx100.Driver.Tests.Device
             Assert.Equal(Onx100PowerState.On, observedEvent.CurrentState.PowerState);
         }
 
+        [Fact]
+        public async Task ReceiveLoop_WhenDeviceStateChangedSubscriberThrows_ContinuesProcessingMessages()
+        {
+            FakeOnx100Transport transport = new FakeOnx100Transport();
+            await using Onx100Device device = new Onx100Device(CreateOptions(), transport);
+            int invocationCount = 0;
+
+            device.Onx100DeviceStateChanged += (_, _) =>
+            {
+                if (Interlocked.Increment(ref invocationCount) == 1)
+                {
+                    throw new InvalidOperationException("Subscriber failure.");
+                }
+            };
+
+            await device.ConnectAsync();
+
+            transport.QueueIncoming("EVT PWR ON\r\n");
+
+            await WaitUntilAsync(() => device.DeviceState.PowerState == Onx100PowerState.On, TimeSpan.FromSeconds(1));
+
+            transport.QueueIncoming("EVT PWR OFF\r\n");
+
+            await WaitUntilAsync(() => device.DeviceState.PowerState == Onx100PowerState.Off, TimeSpan.FromSeconds(1));
+
+            Assert.Equal(Onx100ConnectionState.Connected, device.ConnectionState);
+            Assert.Equal(2, invocationCount);
+        }
+
 
         /***************** PRIVATE METHODS ********************/
         private static Onx100Options CreateOptions()

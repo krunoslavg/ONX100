@@ -13,7 +13,8 @@ namespace Onx100.Driver.Commands
         private readonly TimeSpan defaultTimeout;
         private readonly SemaphoreSlim executionLock = new SemaphoreSlim(1, 1);
         private readonly object pendingLock = new();
-        private PendingCommand? pendingCommand;
+        private PendingCommand? pendingCommand;        
+        private bool sessionInvalidated;
 
 
         /********* CONSTRUCTOR ***********/
@@ -36,14 +37,16 @@ namespace Onx100.Driver.Commands
 
             TimeSpan effectiveTimeout = timeout ?? defaultTimeout;
 
-            if (effectiveTimeout <= TimeSpan.Zero)            
+            if (effectiveTimeout <= TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(timeout));
-            
 
             await executionLock.WaitAsync(cancellationToken).ConfigureAwait(false);
 
             try
             {
+                if (IsSessionInvalidated())
+                    throw new InvalidOperationException("The protocol session is desynchronized. Reconnect before sending another command.");
+
                 PendingCommand pendingCommand = new PendingCommand(command, expectedResponseKind);
 
                 SetPendingCommand(pendingCommand);
@@ -51,28 +54,42 @@ namespace Onx100.Driver.Commands
                 try
                 {
                     byte[] data = Encoding.ASCII.GetBytes(command);
-
-                    await transport.SendAsync(data, cancellationToken).ConfigureAwait(false);
-
-                    Onx100ProtocolMessage response;
+                    bool sendAttempted = false;
 
                     try
                     {
-                        response = await pendingCommand.ResponseTask.WaitAsync(effectiveTimeout, cancellationToken).ConfigureAwait(false);
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        sendAttempted = true;
+
+                        await transport.SendAsync(data, cancellationToken).ConfigureAwait(false);
+
+                        Onx100ProtocolMessage response;
+
+                        try
+                        {
+                            response = await pendingCommand.ResponseTask.WaitAsync(effectiveTimeout, cancellationToken).ConfigureAwait(false);
+                        }
+                        catch (TimeoutException)
+                        {
+                            InvalidateSession();
+                            throw new Onx100TimeoutException(NormalizeCommand(command), effectiveTimeout);
+                        }
+
+                        if (response.Kind == Onx100MessageKind.ErrorResponse)
+                        {
+                            int errorCode = response.ErrorCode ?? throw new InvalidOperationException("Protocol error response has no error code.");
+
+                            throw new Onx100CommandException(NormalizeCommand(command), errorCode);
+                        }
+
+                        return response;
                     }
-                    catch (TimeoutException)
+                    catch (OperationCanceledException) when (sendAttempted)
                     {
-                        throw new Onx100TimeoutException(NormalizeCommand(command), effectiveTimeout);
+                        InvalidateSession();
+                        throw;
                     }
-
-                    if (response.Kind == Onx100MessageKind.ErrorResponse)
-                    {
-                        int errorCode = response.ErrorCode ?? throw new InvalidOperationException("Protocol error response has no error code.");
-
-                        throw new Onx100CommandException(NormalizeCommand(command),errorCode);
-                    }
-
-                    return response;
                 }
                 finally
                 {
@@ -110,6 +127,30 @@ namespace Onx100.Driver.Commands
             return command?.TrySetException(exception) ?? false;
         }
 
+        public async Task ResetSessionAsync()
+        {
+            await executionLock.WaitAsync().ConfigureAwait(false);
+
+            try
+            {
+                lock (pendingLock)
+                {
+                    sessionInvalidated = false;
+                }
+            }
+            finally
+            {
+                executionLock.Release();
+            }
+        }
+
+        public bool IsSessionInvalidated()
+        {
+            lock (pendingLock)
+            {
+                return sessionInvalidated;
+            }
+        }
 
         /********* PRIVATE METHODS ***********/
         private void SetPendingCommand(PendingCommand command)
@@ -137,5 +178,14 @@ namespace Onx100.Driver.Commands
         {
             return command.TrimEnd('\r');
         }
+
+        private void InvalidateSession()
+        {
+            lock (pendingLock)
+            {
+                sessionInvalidated = true;
+            }
+        }
+
     }
 }

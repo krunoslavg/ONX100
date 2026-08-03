@@ -1,5 +1,8 @@
 ﻿using Onx100.Driver.Commands;
+using Onx100.Driver.Configuration;
+using Onx100.Driver.Enums;
 using Onx100.Driver.Protocol;
+using Onx100.Driver.Tests.TestDoubles;
 
 namespace Onx100.Driver.Tests.Commands
 {
@@ -90,7 +93,7 @@ namespace Onx100.Driver.Tests.Commands
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.ResponseTask);
         }
 
-
+     
         /*************** PRIVATE METHODS **************/
         private static Onx100ProtocolMessage CreateMessage(Onx100MessageKind kind)
         {
@@ -99,5 +102,6 @@ namespace Onx100.Driver.Tests.Commands
                 Raw = "TEST"
             };
         }
+
     }
 }
