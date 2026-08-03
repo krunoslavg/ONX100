@@ -1,29 +1,29 @@
-# ONX-100 Protocol Notes
+# Bilješke o ONX-100 protokolu
 
-Reverse-engineered against the provided ONX-100 simulator and compared with the vendor protocol excerpt.
+Protokol je analiziran metodom obrnutog inženjeringa nad dostavljenim ONX-100 simulatorom i uspoređen s isječkom protokola proizvođača.
 
 ## 1. Transport
 
-| Property | Observed behavior |
-|---|---|
-| Transport | TCP |
-| Port | `4999` |
-| Encoding | ASCII |
-| Command terminator | `CR` (`\r`, byte `0x0D`) |
-| Response terminator | `CRLF` (`\r\n`) |
-| Concurrent clients | One active client only |
-| Idle timeout | Approximately 60 seconds |
-| Idle timeout reset | Any received command resets the timer |
+| Svojstvo            | Opaženo ponašanje                      |
+|---------------------|----------------------------------------|
+| Transport           | TCP                                    |
+| Port                | `4999`                                 |
+| Kodiranje           | ASCII                                  |
+| Završetak naredbe   | `CR` (`\r`, bajt `0x0D`)               |
+| Završetak odgovora  | `CRLF` (`\r\n`)                        |
+| Istodobni klijenti  | Samo jedan aktivni klijent             |
+| Idle timeout        | Približno 60 sekundi                   |
+| Reset idle timeouta | Svaka primljena naredba resetira timer |
 
-### 1.1 Command framing
+### 1.1 Uokvirivanje naredbi
 
-Commands must be terminated with `CR`.
+Naredbe moraju završavati znakom `CR`.
 
 ```text
 PWR ?\r
 ```
 
-The simulator buffers partial TCP data until it receives `CR`. A command may therefore be split across multiple TCP writes:
+Simulator sprema djelomično primljene TCP podatke dok ne primi `CR`. Naredba zato može biti podijeljena kroz više TCP upisa:
 
 ```text
 "PW"
@@ -31,93 +31,97 @@ The simulator buffers partial TCP data until it receives `CR`. A command may the
 "\r"
 ```
 
-The simulator reconstructs this as:
+Simulator ih rekonstruira kao:
 
 ```text
 PWR ?
 ```
 
-Multiple `CR`-terminated commands may also be sent in a single TCP write. They are processed sequentially and responses are returned in the same order.
+Više naredbi završenih znakom `CR` također se može poslati u jednom TCP upisu. Obrađuju se redom, a odgovori se vraćaju istim redoslijedom.
 
-### 1.2 `LF` and `CRLF`
+### 1.2 `LF` i `CRLF`
 
-A standalone `LF` (`\n`) is not a command delimiter. Data remains buffered until a later `CR` arrives.
+Samostalni `LF` (`\n`) nije delimiter naredbe. Podaci ostaju u međuspremniku dok naknadno ne stigne `CR`.
 
-A command terminated with `CRLF` is processed when the `CR` is received, but the trailing `LF` may remain in the simulator input buffer and contaminate the following command.
+Naredba završena s `CRLF` obrađuje se čim je primljen `CR`, ali preostali `LF` može ostati u ulaznom međuspremniku simulatora i onečistiti sljedeću naredbu.
 
-For reliable communication, send commands with `CR` only.
+Za pouzdanu komunikaciju naredbe treba slati isključivo s `CR` završetkom.
 
-## 2. Connection lifecycle
+## 2. Životni ciklus veze
 
-### 2.1 Connection banner
+### 2.1 Pozdravna poruka veze
 
-Immediately after every successful TCP connection, the simulator sends:
+Odmah nakon svake uspješne TCP veze simulator šalje:
 
 ```text
 *HELLO ONX-100 FW:2.13
 ```
 
-This is an unsolicited connection-level message, not a response to a command.
+To je neželjena poruka na razini veze, a ne odgovor na naredbu.
 
-### 2.2 Second client
+Driver ovu poruku treba tretirati kao protokolni handshake. Sama uspješna TCP veza ne dokazuje da je ONX-100 sesija prihvaćena.
 
-The simulator permits only one active TCP client.
+### 2.2 Drugi klijent
 
-If another client connects while a session is active, it receives:
+Simulator dopušta samo jedan aktivni TCP klijent.
+
+Ako se drugi klijent spoji dok je sesija već aktivna, prima:
 
 ```text
 *BUSY
 ```
 
-The simulator then closes the second connection. The original connection remains active.
+Simulator zatim zatvara vezu drugog klijenta. Izvorna veza ostaje aktivna.
 
-### 2.3 Idle disconnect
+Driver treba tretirati `*BUSY` kao odbijeni pokušaj povezivanja, zatvoriti vlastiti transport i prepustiti retry/backoff politiku pozivatelju.
 
-After approximately 60 seconds without client traffic, the simulator closes the TCP session. Sending any command resets the idle timer.
+### 2.3 Prekid zbog neaktivnosti
 
-An orderly idle disconnect was observed to send:
+Nakon približno 60 sekundi bez prometa sa strane klijenta simulator zatvara TCP sesiju. Slanje bilo koje naredbe resetira idle timer.
+
+Kod urednog prekida zbog neaktivnosti opaženo je slanje poruke:
 
 ```text
 BYE
 ```
 
-before closing the connection.
+prije zatvaranja veze.
 
-### 2.4 Forced simulator shutdown
+### 2.4 Prisilno gašenje simulatora
 
-When the simulator is terminated with `Ctrl+C`, it does not send `BYE` or another protocol message. The client detects a transport-level disconnect, for example:
+Kada se simulator prekine s `Ctrl+C`, ne šalje `BYE` ni drugu protokolnu poruku. Klijent detektira prekid na razini transporta, primjerice:
 
 ```text
 Unable to read data from the transport connection:
 An existing connection was forcibly closed by the remote host.
 ```
 
-## 3. Command syntax
+## 3. Sintaksa naredbi
 
-The parser is strict:
+Parser je strog:
 
-- command names are case-sensitive
-- parameters are case-sensitive
-- exactly one space is expected between command and parameter
-- leading spaces are rejected
-- trailing spaces are rejected
-- commands are not trimmed or normalized
+- nazivi naredbi razlikuju velika i mala slova
+- parametri razlikuju velika i mala slova
+- očekuje se točno jedan razmak između naredbe i parametra
+- početni razmaci se odbijaju
+- završni razmaci se odbijaju
+- naredbe se ne trimaju niti normaliziraju
 
-Examples:
+Primjeri:
 
-| Input | Result |
-|---|---|
-| `PWR ?` | Valid |
-| `pwr ?` | `ERR 01` |
+| Ulaz     | Rezultat |
+|----------|----------|
+| `PWR ?`  | Valjano  |
+| `pwr ?`  | `ERR 01` |
 | `PWR on` | `ERR 02` |
-| `PWR?` | `ERR 01` |
+| `PWR?`   | `ERR 01` |
 | `PWR  ?` | `ERR 02` |
 | ` PWR ?` | `ERR 01` |
 | `PWR ? ` | `ERR 02` |
 
-## 4. Power
+## 4. Napajanje
 
-### 4.1 Commands
+### 4.1 Naredbe
 
 ```text
 PWR ON
@@ -125,9 +129,9 @@ PWR OFF
 PWR ?
 ```
 
-### 4.2 Query responses
+### 4.2 Odgovori na query
 
-Observed power states:
+Opažena stanja napajanja:
 
 ```text
 PWR OFF
@@ -136,21 +140,21 @@ PWR ON
 PWR COOL
 ```
 
-### 4.3 State machine
+### 4.3 Stroj stanja
 
 ```text
 OFF -> WARM -> ON
 ON  -> COOL -> OFF
 ```
 
-Observed timing:
+Opažena trajanja:
 
-| Transition | Approximate duration |
-|---|---:|
-| `PWR ON` to `EVT PWR ON` | 11-12 seconds |
-| `PWR OFF` to `EVT PWR OFF` | 7-8 seconds |
+| Prijelaz                   | Približno trajanje |
+|----------------------------|--------------------|
+| `PWR ON` do `EVT PWR ON`   | 11–12 sekundi      |
+| `PWR OFF` do `EVT PWR OFF` | 7–8 sekundi        |
 
-A setter returns `OK` immediately, but the actual transition completes only when the corresponding event arrives:
+Setter odmah vraća `OK`, ali stvarni prijelaz završava tek kada stigne odgovarajući event:
 
 ```text
 PWR ON
@@ -166,18 +170,18 @@ OK
 EVT PWR OFF
 ```
 
-During the transitions:
+Tijekom prijelaza:
 
-- `PWR ?` returns `PWR WARM` or `PWR COOL`
-- `IN ?` and input setters return `ERR 03`
-- `VOL` commands remain available
-- `MUTE` commands remain available
+- `PWR ?` vraća `PWR WARM` ili `PWR COOL`
+- `IN ?` i input setteri vraćaju `ERR 03`
+- `VOL` naredbe ostaju dostupne
+- `MUTE` naredbe ostaju dostupne
 
-Sending the same power setter while the device is already in that state, or is already transitioning toward that state, returns `OK`. A new power event may not be emitted when no actual state change occurs.
+Slanje istog power settera dok je uređaj već u traženom stanju ili se već kreće prema tom stanju vraća `OK`. Novi power event možda se neće poslati ako nije došlo do stvarne promjene stanja.
 
-## 5. Input selection
+## 5. Odabir ulaza
 
-### 5.1 Commands
+### 5.1 Naredbe
 
 ```text
 IN 1
@@ -187,14 +191,14 @@ IN 4
 IN ?
 ```
 
-### 5.2 Behavior
+### 5.2 Ponašanje
 
-When the device is fully powered on:
+Kada je uređaj potpuno uključen:
 
-- `IN <1-4>` returns `OK`
-- `IN ?` returns `IN <1-4>`
+- `IN <1-4>` vraća `OK`
+- `IN ?` vraća `IN <1-4>`
 
-Example:
+Primjer:
 
 ```text
 IN 3
@@ -203,68 +207,68 @@ IN ?
 IN 3
 ```
 
-Input functions are unavailable while the device is:
+Input funkcije nisu dostupne dok je uređaj:
 
-- powered off
-- warming
-- cooling
+- isključen
+- u zagrijavanju
+- u hlađenju
 
-In those states, input commands return:
+U tim stanjima input naredbe vraćaju:
 
 ```text
 ERR 03
 ```
 
-No dedicated `EVT IN ...` event was observed.
+Nije opažen zaseban `EVT IN ...` event.
 
-## 6. Volume
+## 6. Glasnoća
 
-### 6.1 Commands
+### 6.1 Naredbe
 
 ```text
 VOL <0-100>
 VOL ?
 ```
 
-### 6.2 Decimal setter, hexadecimal query
+### 6.2 Decimalni setter, heksadecimalni query
 
-The setter accepts a decimal value:
+Setter prihvaća decimalnu vrijednost:
 
 ```text
 VOL 60
 OK
 ```
 
-The query returns the current value as hexadecimal text:
+Query vraća trenutačnu vrijednost kao heksadecimalni tekst:
 
 ```text
 VOL ?
 VOL 3C
 ```
 
-Examples:
+Primjeri:
 
-| Decimal volume | Query response |
-|---:|---|
-| `1` | `VOL 01` |
-| `33` | `VOL 21` |
-| `40` | `VOL 28` |
-| `60` | `VOL 3C` |
+| Decimalna glasnoća | Odgovor na query |
+|--------------------|------------------|
+| `1`                | `VOL 01`         |
+| `33`               | `VOL 21`         |
+| `40`               | `VOL 28`         |
+| `60`               | `VOL 3C`         |
 
-The driver must parse the query payload as hexadecimal.
+Driver mora parsirati payload odgovora kao heksadecimalnu vrijednost.
 
-Volume commands work while the device is:
+Naredbe za glasnoću rade dok je uređaj:
 
-- off
-- warming
-- on
-- cooling
+- isključen
+- u zagrijavanju
+- uključen
+- u hlađenju
 
-No dedicated volume event was observed.
+Nije opažen zaseban event za glasnoću.
 
-## 7. Mute
+## 7. Isključivanje zvuka
 
-### 7.1 Commands
+### 7.1 Naredbe
 
 ```text
 MUTE ON
@@ -272,7 +276,7 @@ MUTE OFF
 MUTE ?
 ```
 
-### 7.2 Behavior
+### 7.2 Ponašanje
 
 ```text
 MUTE ON
@@ -290,9 +294,9 @@ MUTE ?
 MUTE OFF
 ```
 
-Sending the same state repeatedly still returns `OK`.
+Ponovno slanje istog stanja i dalje vraća `OK`.
 
-Invalid forms such as these return `ERR 02`:
+Nevaljani oblici poput sljedećih vraćaju `ERR 02`:
 
 ```text
 MUTE
@@ -301,24 +305,24 @@ MUTE 1
 MUTE on
 ```
 
-Mute commands work while the device is:
+Mute naredbe rade dok je uređaj:
 
-- off
-- warming
-- on
-- cooling
+- isključen
+- u zagrijavanju
+- uključen
+- u hlađenju
 
-No dedicated `EVT MUTE ...` event was observed.
+Nije opažen zaseban `EVT MUTE ...` event.
 
-## 8. Error responses
+## 8. Odgovori s greškom
 
-| Error | Observed meaning |
-|---|---|
-| `ERR 01` | Unknown command or invalid command shape |
-| `ERR 02` | Invalid parameter or invalid formatting |
-| `ERR 03` | Command unavailable in the current device state |
+| Greška   | Opaženo značenje                                   |
+|----------|----------------------------------------------------|
+| `ERR 01` | Nepoznata naredba ili nevaljan oblik naredbe       |
+| `ERR 02` | Nevaljan parametar ili nevaljano formatiranje      |
+| `ERR 03` | Naredba nije dostupna u trenutačnom stanju uređaja |
 
-Examples:
+Primjeri:
 
 ```text
 pwr ?
@@ -336,20 +340,20 @@ IN ?
 ERR 03
 ```
 
-## 9. Unsolicited events
+## 9. Neželjeni eventi
 
-### 9.1 Power events
+### 9.1 Power eventi
 
 ```text
 EVT PWR ON
 EVT PWR OFF
 ```
 
-These indicate completion of the corresponding power transition.
+Oni označavaju završetak odgovarajućeg prijelaza stanja napajanja.
 
-### 9.2 Signal events
+### 9.2 Signal eventi
 
-The simulator sends signal events independently of client commands:
+Simulator šalje signal evente neovisno o naredbama klijenta:
 
 ```text
 EVT SIGNAL 1 OK
@@ -362,36 +366,52 @@ EVT SIGNAL 4 OK
 EVT SIGNAL 4 LOST
 ```
 
-Signal events may arrive between a command and its response. The driver must classify them as unsolicited events and must not consume them as command responses.
+Signal event može stići između naredbe i njezina odgovora. Driver ih mora klasificirati kao neželjene evente i ne smije ih potrošiti kao odgovor na aktivnu naredbu.
 
-## 10. Response reliability
+## 10. Pouzdanost odgovora
 
-The simulator can intentionally drop responses.
+Simulator može namjerno odbaciti odgovore.
 
-Observed examples include:
+Opaženi primjeri uključuju:
 
 ```text
 response dropped: PWR OFF
 ```
 
-and a dropped `OK` response after a valid setter.
+i izgubljeni `OK` odgovor nakon valjanog settera.
 
-A dropped response does not necessarily close the TCP connection. The device may have processed a setter even when the client received no acknowledgement.
+Odbačeni odgovor ne zatvara nužno TCP vezu. Uređaj je mogao obraditi setter čak i ako klijent nije primio potvrdu.
 
-In one test, 1 of 15 valid `PWR ?` responses was dropped. Other runs completed without drops, so the behavior is intermittent.
+U jednom testu odbačen je 1 od 15 valjanih odgovora na `PWR ?`. Ostala pokretanja završila su bez dropova, pa je ponašanje povremeno.
 
-Implications:
+### 10.1 Posljedice na razini uređaja
 
-- every command requires a timeout
-- a timeout must not automatically be treated as a disconnect
-- setter retries must be designed carefully because the first command may already have been applied
-- state queries are safer to retry than setters
+- svaka naredba mora imati timeout
+- timeout ne dokazuje da je uređaj prekinuo vezu
+- timeout ne dokazuje da je setter odbijen
+- slijepo ponavljanje settera nije sigurno jer je prva naredba možda već primijenjena
+- stanje uređaja preživljava TCP reconnect i može se provjeriti u novoj sesiji
 
-## 11. Response ordering
+### 10.2 Politika sesije drivera
 
-When multiple commands are sent together in one TCP write, the simulator processes them sequentially.
+Protokol nema identifikator zahtjeva. Nakon timeouta odgovora zakašnjeli odgovor prethodne naredbe mogao bi stići dok novija naredba čeka isti tip odgovora. Postojeća TCP sesija zato više nije sigurna za korelaciju odgovora.
 
-Example burst:
+Driver stoga:
+
+- označava trenutačnu sesiju nevaljanom nakon command timeouta
+- zatvara TCP sesiju prije dopuštanja nove naredbe
+- zahtijeva eksplicitni reconnect prije daljnjih naredbi
+- dopušta ponavljanje queryja tek u novoj sesiji
+- ne ponavlja settere automatski
+- očekuje da pozivatelj nakon izgubljene potvrde settera napravi reconnect i queryjem provjeri stvarno stanje
+
+Cancellation slijedi isto pravilo kada nastupi nakon početka slanja naredbe. Cancellation dok poziv samo čeka command execution lock ne invalidira aktivnu sesiju.
+
+## 11. Redoslijed odgovora
+
+Kada se više naredbi pošalje zajedno u jednom TCP upisu, simulator ih obrađuje redom.
+
+Primjer burst slanja:
 
 ```text
 VOL 10\r
@@ -403,7 +423,7 @@ IN 2\r
 IN ?\r
 ```
 
-Observed ordered responses while powered on:
+Opaženi redoslijed odgovora dok je uređaj uključen:
 
 ```text
 OK
@@ -415,15 +435,15 @@ OK
 IN 2
 ```
 
-Unsolicited events may still be inserted between those responses.
+Neželjeni eventi i dalje se mogu umetnuti između tih odgovora.
 
-## 12. State persistence
+## 12. Trajnost stanja
 
 ### 12.1 TCP reconnect
 
-Device state survives a TCP reconnect.
+Stanje uređaja preživljava TCP reconnect.
 
-Confirmed preserved values:
+Potvrđene očuvane vrijednosti:
 
 ```text
 PWR ON
@@ -432,11 +452,11 @@ VOL 3C
 MUTE ON
 ```
 
-The TCP session and device state are therefore independent.
+TCP sesija i stanje uređaja zato su međusobno neovisni.
 
-### 12.2 Simulator restart
+### 12.2 Restart simulatora
 
-A full simulator restart resets the device to:
+Potpuni restart simulatora vraća uređaj na:
 
 ```text
 PWR OFF
@@ -445,25 +465,36 @@ VOL 28
 MUTE OFF
 ```
 
-`IN 1` can only be queried after the device completes power-on because input commands return `ERR 03` while powered off.
+`IN 1` može se dohvatiti tek nakon dovršetka uključivanja uređaja jer input naredbe vraćaju `ERR 03` dok je uređaj isključen.
 
-## 13. Driver implementation implications
+## 13. Implikacije za implementaciju drivera
 
-The driver should:
+Driver treba:
 
-1. Use one long-running receive loop.
-2. Buffer incoming bytes until complete `CRLF`-terminated messages are available.
-3. Support fragmented messages and multiple messages in one read.
-4. Send commands with `CR` only.
-5. Serialize command execution or maintain a strict pending-response queue.
-6. Route `EVT ...`, `*HELLO`, `*BUSY`, and `BYE` separately from command responses.
-7. Apply a timeout to every command.
-8. Keep the connection usable after a command timeout.
-9. Model power as `Unknown`, `Off`, `Warming`, `On`, and `Cooling`.
-10. Complete power operations on `EVT PWR ON/OFF`, not merely on `OK`.
-11. Use longer power-operation timeouts than ordinary command timeouts.
-12. Parse volume query values as hexadecimal.
-13. Treat `ERR 03` as a state/capability error.
-14. Detect idle and forced disconnects and support reconnect.
-15. Handle `*BUSY` with backoff instead of a tight reconnect loop.
-16. Avoid multiple independent driver instances connecting to the same device.
+1. Koristiti jednu dugotrajnu receive petlju.
+2. Spremati dolazne bajtove dok nisu dostupne potpune poruke završene s `CRLF`.
+3. Podržavati fragmentirane poruke i više poruka u jednom čitanju.
+4. Slati naredbe isključivo s `CR` završetkom.
+5. Serijalizirati javne naredbe jer protokol nema identifikatore zahtjeva.
+6. Održavati najviše jedan aktivni pending odgovor na naredbu.
+7. Usmjeravati `EVT ...`, `*HELLO`, `*BUSY` i `BYE` odvojeno od odgovora na naredbe.
+8. Tretirati uspostavu TCP veze i uspostavu protokolne veze kao dva odvojena koraka.
+9. Završiti `ConnectAsync` tek nakon primitka poruke `*HELLO`.
+10. Tretirati `*BUSY`, prekid prije `*HELLO` ili handshake timeout kao neuspješan pokušaj povezivanja.
+11. Tretirati `*BUSY` kao odbijenu sesiju i prepustiti retry/backoff politiku pozivatelju.
+12. Primijeniti timeout na svaku naredbu.
+13. Invalidirati i zatvoriti trenutačnu sesiju nakon command timeouta.
+14. Invalidirati i zatvoriti sesiju kada cancellation nastupi nakon početka slanja naredbe.
+15. Ostaviti sesiju aktivnom ako cancellation nastupi dok poziv samo čeka ulazak u serijalizirani command path.
+16. Ponavljati queryje tek nakon reconnecta u novu sesiju.
+17. Nikada slijepo ne ponavljati setter čija je potvrda izgubljena; napraviti reconnect i queryjem provjeriti stanje.
+18. Modelirati napajanje stanjima `Unknown`, `Off`, `Warming`, `On` i `Cooling`.
+19. Završavati power operacije na `EVT PWR ON/OFF`, a ne samo na `OK`.
+20. Tretirati završni power event kao autoritativan čak i ako stigne prije potvrde settera.
+21. Koristiti dulje timeoutove za power operacije nego za obične naredbe.
+22. Parsirati vrijednosti volume queryja kao heksadecimalne.
+23. Tretirati `ERR 03` kao grešku stanja ili dostupnosti funkcionalnosti.
+24. Odmah završiti pending naredbe i power waitere greškom nakon remote disconnecta, poruke `BYE` ili odbijene sesije.
+25. Resetirati framing i command-correlation stanje na granici reconnecta.
+26. Izolirati iznimke koje bace korisnički event handleri kako ne bi prekinule receive petlju ili životni ciklus veze.
+27. Izbjegavati povezivanje više neovisnih instanci drivera na isti uređaj.
