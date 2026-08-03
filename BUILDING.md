@@ -2,32 +2,53 @@
 
 ## Preduvjeti
 
-Za buildanje i pokretanje projekta potrebno je:
+Za buildanje i pokretanje cijelog projekta potrebno je:
 
 - instaliran **.NET 9 SDK**
+- instalirani **Node.js i npm**
 - dostavljeni ONX-100 simulator
 - slobodan TCP port `4999`
-- terminal otvoren u root direktoriju repozitorija
 
-Instaliranu verziju .NET SDK-a moguće je provjeriti naredbom:
+Provjera instaliranih verzija:
 
+```bash
 dotnet --version
+node --version
+npm --version
+```
 
-Projekti ciljaju framework: net9.0
+.NET projekti ciljaju:
+
+```text
+net9.0
+```
+
+## Struktura izvršavanja
+
+```text
+React frontend
+    -> REST API + SignalR
+Onx100.Api
+    -> Onx100.Driver
+ONX-100 simulator
+    -> TCP 127.0.0.1:4999
+```
+
+Produkcijska React verzija kopira se u `Onx100.Api/wwwroot`, pa se cijela aplikacija pokreće iz jednog ASP.NET Core procesa.
 
 ## Skripte
 
-Sve pomoćne skripte nalaze se u direktoriju `scripts` u rootu repozitorija.
+Sve pomoćne skripte nalaze se u direktoriju `scripts`.
 
-Dostupne su PowerShell i Bash varijante:
+| Namjena | PowerShell | Bash |
+|---|---|---|
+| Buildanje frontenda i .NET-a te pokretanje testova | `scripts/build.ps1` | `scripts/build.sh` |
+| Pokretanje API-ja i ugrađenog React frontenda | `scripts/run-api.ps1` | `scripts/run-api.sh` |
+| Pokretanje Vite razvojnog poslužitelja | `scripts/run-web.ps1` | `scripts/run-web.sh` |
+| Pokretanje demo aplikacije | `scripts/run-demo.ps1` | `scripts/run-demo.sh` |
+| Pokretanje protokolne konzole | `scripts/run-protocol-console.ps1` | `scripts/run-protocol-console.sh` |
 
-| Namjena                           | PowerShell                         | Bash                              |
-|---                                |---                                 |---                                |
-| Restore, Release build i testovi  | `scripts/build.ps1`                | `scripts/build.sh`                |
-| Pokretanje demo aplikacije        | `scripts/run-demo.ps1`             | `scripts/run-demo.sh`             |
-| Pokretanje protocol console alata | `scripts/run-protocol-console.ps1` | `scripts/run-protocol-console.sh` |
-
-Skripte same određuju root direktorij repozitorija, pa ih nije nužno pokretati iz određenog radnog direktorija.
+Skripte same određuju korijenski direktorij repozitorija, pa ih nije potrebno pokretati iz određenog radnog direktorija.
 
 ## Buildanje i testiranje
 
@@ -37,7 +58,7 @@ Skripte same određuju root direktorij repozitorija, pa ih nije nužno pokretati
 .\scripts\build.ps1
 ```
 
-### Bash, Git Bash ili Linux/macOS
+### Bash, Git Bash, Linux ili macOS
 
 ```bash
 ./scripts/build.sh
@@ -45,11 +66,14 @@ Skripte same određuju root direktorij repozitorija, pa ih nije nužno pokretati
 
 Build skripta izvršava:
 
-1. `dotnet restore`
-2. Release build cijelog solutiona
-3. pokretanje testnog projekta bez ponovnog buildanja
+1. `npm ci` u `Onx100.Web`
+2. izradu produkcijske React verzije
+3. kopiranje `Onx100.Web/dist` u `Onx100.Api/wwwroot`
+4. `dotnet restore Onx100.sln`
+5. Release build cijelog rješenja
+6. pokretanje projekta `Onx100.Driver.Tests`
 
-Očekivani rezultat:
+Očekivani rezultat testova:
 
 ```text
 Passed: 103
@@ -57,16 +81,74 @@ Failed: 0
 Skipped: 0
 ```
 
-## Pokretanje demo aplikacije
+Build skriptu treba pokrenuti nakon povlačenja repozitorija i nakon promjena frontenda koje trebaju biti ugrađene u API.
+
+## Pokretanje integrirane aplikacije
 
 Prije pokretanja:
 
 1. pokrenuti dostavljeni ONX-100 simulator
-2. provjeriti da simulator sluša na `127.0.0.1:4999`
+2. provjeriti da sluša na `127.0.0.1:4999`
 3. provjeriti da nijedan drugi klijent nije spojen
 4. prethodno izvršiti build skriptu
 
-Simulator dopušta samo jednu aktivnu TCP vezu. Dodatni klijent primit će poruku `*BUSY`, nakon čega će veza biti odbijena.
+Simulator dopušta samo jednu aktivnu TCP vezu. Dodatni klijent primit će `*BUSY` i veza će biti odbijena.
+
+### Windows PowerShell
+
+```powershell
+.\scripts\run-api.ps1
+```
+
+### Bash, Git Bash, Linux ili macOS
+
+```bash
+./scripts/run-api.sh
+```
+
+Skripta pokreće `Onx100.Api` u konfiguraciji Release bez ponovnog buildanja. Otvoriti URL koji ASP.NET Core ispiše uz poruku `Now listening on`.
+
+Na tom URL-u dostupni su:
+
+- React frontend na `/`
+- REST API na `/api/device/...`
+- SignalR hub na `/hubs/device`
+
+## Razvojni način rada frontenda
+
+`run-web` skripte nisu potrebne za normalno korištenje aplikacije. Koriste se samo tijekom razvoja React frontenda radi Vite automatskog ponovnog učitavanja.
+
+Potrebna su dva terminala.
+
+### Terminal 1 — API
+
+```powershell
+.\scripts\run-api.ps1
+```
+
+ili:
+
+```bash
+./scripts/run-api.sh
+```
+
+### Terminal 2 — Vite frontend
+
+```powershell
+.\scripts\run-web.ps1
+```
+
+ili:
+
+```bash
+./scripts/run-web.sh
+```
+
+Otvoriti URL koji Vite ispiše. Razvojni proxy prosljeđuje zahtjeve za `/api` i `/hubs` prema `Onx100.Api`.
+
+## Pokretanje demo aplikacije
+
+Prije pokretanja potrebno je pokrenuti simulator, osigurati da drugi klijent nije spojen i izvršiti build skriptu.
 
 ### Windows PowerShell
 
@@ -74,28 +156,25 @@ Simulator dopušta samo jednu aktivnu TCP vezu. Dodatni klijent primit će poruk
 .\scripts\run-demo.ps1
 ```
 
-### Bash, Git Bash ili Linux/macOS
+### Bash, Git Bash, Linux ili macOS
 
 ```bash
 ./scripts/run-demo.sh
 ```
 
-Demo izvršava sljedeći tijek:
+Demo:
 
-1. povezuje se sa simulatorom
-2. dovršava `*HELLO` handshake
-3. uključuje uređaj
-4. odabire ulaz `2`
-5. postavlja glasnoću na `50`
-6. isključuje mute
-7. dohvaća završno stanje uređaja
-8. uredno prekida vezu
+1. uspostavlja vezu i dovršava `*HELLO` handshake
+2. uključuje uređaj
+3. odabire ulaz `2`
+4. postavlja glasnoću na `50`
+5. isključuje mute
+6. dohvaća završno stanje
+7. uredno prekida vezu
 
-Uspješno izvršavanje završava s exit codeom `0`.
+Demo sadrži logiku oporavka za namjerno odbačene odgovore simulatora.
 
-## Pokretanje protocol console aplikacije
-
-Prije pokretanja potrebno je pokrenuti simulator i izvršiti build skriptu.
+## Pokretanje protokolne konzole
 
 ### Windows PowerShell
 
@@ -103,46 +182,65 @@ Prije pokretanja potrebno je pokrenuti simulator i izvršiti build skriptu.
 .\scripts\run-protocol-console.ps1
 ```
 
-### Bash, Git Bash ili Linux/macOS
+### Bash, Git Bash, Linux ili macOS
 
 ```bash
 ./scripts/run-protocol-console.sh
 ```
 
-Protocol console omogućuje:
+Protokolna konzola omogućuje:
 
 - ručno slanje sirovih ONX-100 naredbi
 - prikaz primljenih odgovora
 - asinkrono primanje neželjenih protokolnih događaja
-- testiranje framinga, timeouta i ponašanja simulatora
+- dijagnostiku uokvirivanja poruka, isteka vremena i ponašanja simulatora
 
-Produkcijsko integracijsko sučelje je projekt `Onx100.Driver`. `Onx100.ProtocolConsole` služi isključivo kao dijagnostički i razvojni alat.
+`Onx100.ProtocolConsole` nije produkcijsko integracijsko sučelje. Za integraciju se koristi `Onx100.Driver`, odnosno `Onx100.Api` za klijente u pregledniku.
 
-## Ručno pokretanje
+## Konfiguracija simulatora
 
-Skripte su samo praktični omotači oko standardnih .NET CLI naredbi. Ekvivalentne naredbe moguće je izvršiti i ručno:
-
-```bash
-dotnet restore Onx100.sln
-dotnet build Onx100.sln -c Release --no-restore
-dotnet test Onx100.Driver.Tests/Onx100.Driver.Tests.csproj -c Release --no-build
-```
-
-```bash
-dotnet run --project Onx100.Demo -c Release --no-build
-dotnet run --project Onx100.ProtocolConsole -c Release --no-build
-```
-
-## Napomena o simulatoru
-
-ONX-100 simulator nije dio driver biblioteke i mora se pokrenuti zasebno.
-
-Zadane postavke korištene u projektu:
+Zadane postavke nalaze se u `Onx100.Api/appsettings.json`:
 
 ```text
 Host: 127.0.0.1
 Port: 4999
-Transport: TCP
+ConnectionTimeout: 5 s
+CommandTimeout: 3 s
+PowerTransitionTimeout: 20 s
 ```
 
-Detaljnija opažanja o protokolu dostupna su u dokumentu [PROTOCOL.md](PROTOCOL.md).
+## Česti problemi
+
+### `*BUSY`
+
+Drugi klijent već koristi jedinu TCP sesiju simulatora. Zaustaviti API, Demo, ProtocolConsole ili drugi spojeni alat i pokušati ponovno.
+
+### Frontend ne prikazuje najnovije promjene
+
+Ponovno izvršiti `build.ps1` ili `build.sh`. Skripta ponovno builda React i osvježava `Onx100.Api/wwwroot`.
+
+### `npm` nije pronađen
+
+Instalirati Node.js, zatvoriti i ponovno otvoriti terminal te provjeriti `node --version` i `npm --version`.
+
+### `dotnet` nije pronađen
+
+Instalirati .NET 9 SDK i provjeriti `dotnet --version`.
+
+### Bash skripta nema dozvolu za izvršavanje
+
+```bash
+chmod +x scripts/*.sh
+```
+
+Skriptu je moguće pokrenuti i izravno:
+
+```bash
+bash scripts/build.sh
+```
+
+## Napomena o publish paketu
+
+Zaseban publish paket nije potreban za predaju repozitorija. Evaluator može povući repozitorij, izvršiti build skriptu i zatim pokrenuti `run-api` skriptu.
+
+Detaljna opažanja o protokolu dostupna su u [PROTOCOL.md](PROTOCOL.md).

@@ -1,55 +1,250 @@
-# ONX-100 .NET driver
+# ONX-100 upravljački program i upravljačka aplikacija
 
-Višekratno upotrebljiv asinkroni C#/.NET driver za simulirani ONX-100 AV uređaj.
+Višekratno upotrebljiv asinkroni C#/.NET upravljački program i web-aplikacija za upravljanje simuliranim ONX-100 AV uređajem.
 
-Driver izlaže tipizirani .NET API za upravljanje vezom, napajanjem, odabirom ulaza, glasnoćom, mute stanjem, stanjem uređaja i eventima promjene stanja. Interno obrađuje ONX-100 ASCII-over-TCP protokol, framing poruka, korelaciju odgovora, neželjene evente, timeoute, prekide veze i granice reconnecta.
+Repozitorij sadrži:
 
-Protokol je istražen black-box analizom dostavljenog simulatora i uspoređen s isječkom protokola proizvođača. Detaljna opažanja dokumentirana su u [PROTOCOL.md](PROTOCOL.md).
+- tipizirani .NET upravljački program za ONX-100 ASCII-over-TCP protokol
+- ASP.NET Core API koji upravlja vezom prema uređaju i izlaže REST krajnje točke
+- React sučelje za upravljanje uređajem i praćenje njegova stanja
+- SignalR ažuriranja stanja u stvarnom vremenu
+- dijagnostičke i demonstracijske aplikacije
+- automatizirane testove upravljačkog programa te skripte za buildanje i pokretanje na više platformi
 
-## Struktura solutiona
+Protokol je istražen metodom crne kutije korištenjem dostavljenog simulatora te uspoređen s izvatkom proizvođačke protokolne dokumentacije. Detaljna opažanja nalaze se u dokumentu [PROTOCOL.md](PROTOCOL.md).
+
+## Arhitektura
+
+```text
+Preglednik / React
+    │
+    ├── REST API
+    └── SignalR
+         │
+         ▼
+Onx100.Api (ASP.NET Core)
+         │
+         ▼
+Onx100.Driver
+         │ TCP 127.0.0.1:4999
+         ▼
+ONX-100 simulator / uređaj
+```
+
+`Onx100.Api` jedini upravlja TCP sesijom. Preglednik nikada ne komunicira izravno sa simulatorom.
+
+## Struktura repozitorija
 
 ```text
 Onx100.sln
 ├── Onx100.Driver
 ├── Onx100.Driver.Tests
 ├── Onx100.ProtocolConsole
-└── Onx100.Demo
+├── Onx100.Demo
+├── Onx100.Api
+├── Onx100.Web
+├── scripts
+├── PROTOCOL.md
+├── BUILDING.md
+└── README.md
 ```
 
-| Projekt                   | Namjena                                                                                         |
-|---------------------------|-------------------------------------------------------------------------------------------------|
-| `Onx100.Driver`           | Višekratno upotrebljiva class library koja sadrži javni API drivera i implementaciju protokola. |
-| `Onx100.Driver.Tests`     | xUnit testovi jedinica, konkurentnosti, životnog ciklusa i robusnosti.                          |
-| `Onx100.ProtocolConsole`  | Niskorazinski konzolni alat korišten za istraživanje i provjeru sirovog ONX-100 protokola.      |
-| `Onx100.Demo`             | Minimalna klijentska aplikacija koja demonstrira uobičajeno korištenje drivera.                 |
+| Projekt | Namjena |
+|---|---|
+| `Onx100.Driver` | Višekratno upotrebljiva biblioteka klasa koja sadrži javni API upravljačkog programa i implementaciju protokola. |
+| `Onx100.Driver.Tests` | xUnit testovi jedinica koda, konkurentnosti, životnog ciklusa i robusnosti. |
+| `Onx100.ProtocolConsole` | Konzolni alat niske razine za ručno istraživanje protokola i dijagnostiku. |
+| `Onx100.Demo` | Minimalna primjerna aplikacija koja prikazuje korištenje upravljačkog programa i oporavak nakon grešaka. |
+| `Onx100.Api` | ASP.NET Core REST API, SignalR hub, servisni sloj uređaja i poslužitelj produkcijske React verzije. |
+| `Onx100.Web` | React, TypeScript i Vite upravljačko sučelje. |
 
 ## Implementirane funkcionalnosti
 
-- asinkrono povezivanje i prekidanje veze
+### Upravljački program
+
+- asinkrono spajanje i prekid veze
 - obavezni `*HELLO` protokolni handshake
 - odbijanje `*BUSY` sesija
-- uključivanje i isključivanje uz praćenje prijelaznih stanja
-- postavljanje i dohvat odabranog ulaza
+- uključivanje i isključivanje uređaja uz praćenje prijelaznih stanja
+- odabir i dohvat aktivnog ulaza
 - postavljanje i dohvat glasnoće
 - postavljanje i dohvat mute stanja
-- eventi stanja veze i stanja uređaja
-- obrada neželjenih power i signal eventa
+- događaji promjene veze i stanja uređaja
+- obrada neželjenih događaja napajanja i signala
 - serijalizirano i thread-safe izvršavanje javnih naredbi
-- TCP framing fragmentiranih poruka i više poruka u jednom čitanju
-- timeoutovi naredbi i prijelaza napajanja
-- eksplicitna podrška za reconnect
-- čišćenje resursa kroz `IAsyncDisposable`
+- obrada fragmentiranih i višestrukih TCP poruka
+- isteci vremena za naredbe i prijelaze napajanja
+- izričita podrška za ponovno spajanje
+- uredno oslobađanje resursa putem `IAsyncDisposable`
+
+### API servis
+
+- jedna instanca `Onx100Device` koja jedina upravlja vezom
+- automatsko uspostavljanje veze prije operacija nad uređajem
+- serijalizirane API operacije i postupci oporavka
+- REST krajnje točke za stanje, vezu, napajanje, ulaz, glasnoću i mute
+- strukturirani HTTP odgovori za greške
+- oporavak nakon isteka vremena pri upitima i postavljanju vrijednosti
+- SignalR slanje promjena veze i stanja uređaja
+- posluživanje ugrađenog React sučelja
+
+### React sučelje
+
+- spajanje i prekid veze
+- osvježavanje stanja
+- uključivanje i isključivanje uređaja
+- odabir ulaza
+- upravljanje glasnoćom
+- uključivanje i isključivanje mute funkcije
+- prikaz stanja veze, napajanja, ulaza, glasnoće, mute funkcije i signala
+- SignalR ažuriranja u stvarnom vremenu
+- prikaz učitavanja i prijelaznih stanja
+- onemogućavanje kontrola kada operacija nije dostupna
+- razumljive poruke grešaka za korisnika
 
 ## Preduvjeti
 
-- .NET 9.0 SDK
+- **.NET 9 SDK**
+- **Node.js i npm**
 - dostavljeni ONX-100 simulator za integracijsko testiranje
-- TCP pristup simulatoru, uobičajeno na `127.0.0.1:4999`
+- TCP pristup simulatoru na `127.0.0.1:4999`
 
-## Buildanje i pokretanje
-Za upute za buildanje, testiranje i pokretanje pogledajte [BUILDING.md](BUILDING.md).
+## Brzi početak
 
-## Osnovno korištenje drivera
+### 1. Buildanje i testiranje
+
+Windows PowerShell:
+
+```powershell
+.\scripts\build.ps1
+```
+
+Bash, Git Bash, Linux ili macOS:
+
+```bash
+./scripts/build.sh
+```
+
+Build skripte:
+
+1. instaliraju frontend ovisnosti naredbom `npm ci`
+2. izrađuju produkcijsku React verziju
+3. kopiraju frontend u `Onx100.Api/wwwroot`
+4. obnavljaju .NET ovisnosti
+5. buildaju cijelo rješenje u konfiguraciji Release
+6. pokreću testove upravljačkog programa
+
+Automatizirani skup trenutačno sadrži **103 uspješna testa**, bez neuspješnih ili preskočenih testova.
+
+### 2. Pokretanje simulatora
+
+Pokrenuti dostavljeni simulator i provjeriti:
+
+- da sluša na `127.0.0.1:4999`
+- da nijedan drugi klijent nije spojen
+
+Simulator podržava samo jednu aktivnu TCP vezu.
+
+### 3. Pokretanje integrirane aplikacije
+
+Windows PowerShell:
+
+```powershell
+.\scripts\run-api.ps1
+```
+
+Bash, Git Bash, Linux ili macOS:
+
+```bash
+./scripts/run-api.sh
+```
+
+Otvoriti URL koji ispiše ASP.NET Core. React sučelje, REST API i SignalR hub poslužuju se iz istog procesa.
+
+## Dodatni razvojni alati
+
+### React razvojni poslužitelj
+
+Za razvoj frontenda uz Vite automatsko ponovno učitavanje potrebno je pokrenuti API u jednom terminalu, a razvojni frontend poslužitelj u drugom:
+
+```powershell
+.\scripts\run-api.ps1
+.\scripts\run-web.ps1
+```
+
+ili:
+
+```bash
+./scripts/run-api.sh
+./scripts/run-web.sh
+```
+
+Vite razvojni poslužitelj prosljeđuje zahtjeve za `/api` i `/hubs` prema `Onx100.Api`.
+
+### Demo aplikacija
+
+```powershell
+.\scripts\run-demo.ps1
+```
+
+ili:
+
+```bash
+./scripts/run-demo.sh
+```
+
+Demo se spaja na simulator, uključuje uređaj, odabire ulaz `2`, postavlja glasnoću na `50`, isključuje mute, provjerava završno stanje i uredno prekida vezu.
+
+### Protokolna konzola
+
+```powershell
+.\scripts\run-protocol-console.ps1
+```
+
+ili:
+
+```bash
+./scripts/run-protocol-console.sh
+```
+
+Protokolna konzola omogućuje ručno slanje sirovih ONX-100 naredbi, dok se odgovori i neželjeni događaji primaju asinkrono.
+
+## REST API
+
+| Metoda | Krajnja točka | Namjena |
+|---|---|---|
+| `GET` | `/api/device/state` | Vraća trenutačno poznato stanje bez prisilnog upita prema uređaju. |
+| `POST` | `/api/device/refresh` | Dohvaća svježe stanje s uređaja i vraća rezultat. |
+| `POST` | `/api/device/connect` | Uspostavlja vezu s uređajem. |
+| `POST` | `/api/device/disconnect` | Prekida vezu s uređajem. |
+| `POST` | `/api/device/power/on` | Uključuje uređaj. |
+| `POST` | `/api/device/power/off` | Isključuje uređaj. |
+| `PUT` | `/api/device/input/{input}` | Odabire ulaz od `1` do `4`. |
+| `PUT` | `/api/device/volume/{volume}` | Postavlja glasnoću od `0` do `100`. |
+| `PUT` | `/api/device/mute/{enabled}` | Uključuje ili isključuje mute. |
+
+SignalR hub dostupan je na:
+
+```text
+/hubs/device
+```
+
+Promjene stanja šalju se porukom `DeviceStateChanged`.
+
+## API odgovori za greške
+
+API pretvara greške upravljačkog programa i transportnog sloja u strukturirane HTTP odgovore:
+
+| HTTP status | Kod | Značenje |
+|---|---|---|
+| `400` | `invalid_argument` | Neispravna vrijednost ulaza ili glasnoće. |
+| `409` | `device_command_error` | Uređaj je odbio protokolnu naredbu. |
+| `409` | `invalid_device_state` | Tražena operacija nije dopuštena u trenutačnom stanju uređaja. |
+| `503` | `device_unavailable` | Greška veze ili transportnog sloja. |
+| `504` | `device_timeout` | Istek vremena naredbe ili prijelaza napajanja. |
+| `500` | `internal_error` | Neočekivana greška na poslužitelju. |
+
+## Osnovni primjer korištenja upravljačkog programa
 
 ```csharp
 using Onx100.Driver;
@@ -67,84 +262,20 @@ Onx100Options options = new Onx100Options
 
 await using Onx100Device device = new Onx100Device(options);
 
-device.Onx100ConnectionStateChanged += (_, eventArgs) =>
-{
-    Console.WriteLine($"Connection: {eventArgs.PreviousState} -> {eventArgs.CurrentState}");
-};
-
-device.Onx100DeviceStateChanged += (_, eventArgs) =>
-{
-    Onx100DeviceState state = eventArgs.CurrentState;
-    Console.WriteLine($"Power={state.PowerState}, Input={state.SelectedInput}, Volume={state.Volume}, Muted={state.IsMuted}");
-};
-
 await device.ConnectAsync();
 await device.PowerOnAsync();
 await device.SelectInputAsync(2);
 await device.SetVolumeAsync(50);
 await device.SetMuteAsync(false);
 
-int input = await device.GetSelectedInputAsync();
-int volume = await device.GetVolumeAsync();
-bool muted = await device.GetMuteAsync();
+Onx100DeviceState state = device.DeviceState;
 
 await device.DisconnectAsync();
 ```
 
-Sve javne asinkrone operacije prihvaćaju opcionalni `CancellationToken`.
+Sve javne asinkrone operacije prihvaćaju neobavezni `CancellationToken`.
 
-## Pregled javnog API-ja
-
-### Veza i životni ciklus
-
-```csharp
-Task ConnectAsync(CancellationToken cancellationToken = default);
-Task DisconnectAsync(CancellationToken cancellationToken = default);
-ValueTask DisposeAsync();
-```
-
-### Napajanje
-
-```csharp
-Task<Onx100PowerState> GetPowerStateAsync(CancellationToken cancellationToken = default);
-Task PowerOnAsync(CancellationToken cancellationToken = default);
-Task PowerOffAsync(CancellationToken cancellationToken = default);
-```
-
-### Ulaz
-
-```csharp
-Task<int> GetSelectedInputAsync(CancellationToken cancellationToken = default);
-Task SelectInputAsync(int input, CancellationToken cancellationToken = default);
-```
-
-### Glasnoća
-
-```csharp
-Task<int> GetVolumeAsync(CancellationToken cancellationToken = default);
-Task SetVolumeAsync(int volume, CancellationToken cancellationToken = default);
-```
-
-### Mute
-
-```csharp
-Task<bool> GetMuteAsync(CancellationToken cancellationToken = default);
-Task SetMuteAsync(bool mute, CancellationToken cancellationToken = default);
-```
-
-### Stanje i eventi
-
-```csharp
-Onx100ConnectionState ConnectionState { get; }
-Onx100DeviceState DeviceState { get; }
-
-event EventHandler<Onx100ConnectionStateChangedEventArgs>? Onx100ConnectionStateChanged;
-event EventHandler<Onx100DeviceStateChangedEventArgs>? Onx100DeviceStateChanged;
-```
-
-`Onx100DeviceState` sadrži posljednje poznato stanje napajanja, odabrani ulaz, glasnoću, mute stanje i signalno stanje ulaza od `1` do `4`.
-
-## Arhitektura
+## Arhitektura upravljačkog programa
 
 Dolazni podaci prolaze kroz sljedeće komponente:
 
@@ -157,163 +288,70 @@ Onx100ProtocolParser
         ↓
 Onx100CommandDispatcher
         ↓
-Onx100Device state and events
+Onx100Device stanje i događaji
 ```
 
-### Transport
+### Životni ciklus veze
 
-`TcpOnx100Transport` upravlja objektima `TcpClient` i `NetworkStream`. Pruža asinkrone operacije povezivanja, slanja, primanja, prekidanja veze i čišćenja resursa.
-
-### Framing poruka
-
-TCP ne čuva granice aplikacijskih poruka. `Onx100MessageFramer` zato podržava:
-
-- jednu poruku podijeljenu kroz više čitanja
-- više poruka dostavljenih u jednom čitanju
-- `CRLF` terminator podijeljen između čitanja
-- zadržavanje nepotpunih podataka za sljedeće čitanje
-- reset međuspremnika kada TCP sesija završi
-
-Odlazne naredbe koriste isključivo `CR`, kako zahtijeva simulator.
-
-### Parsiranje i dispatch
-
-`Onx100ProtocolParser` pretvara sirove protokolne poruke u tipizirane protokolne modele. Dispatcher dopušta samo jedan aktivni odgovor na naredbu i sprječava neželjene poruke da potroše pending odgovor.
-
-Protokol nema identifikatore zahtjeva, zbog čega je javno izvršavanje naredbi serijalizirano.
-
-### Stanje i eventi
-
-`Onx100Device` održava posljednje poznato stanje uređaja i podiže tipizirane .NET evente kada se promijeni stanje veze ili uređaja.
-
-Svaki event subscriber poziva se zasebno. Iznimka iz korisničkog koda izolirana je kako ne bi prekinula receive petlju, životni ciklus veze ili obavještavanje ostalih subscribera.
-
-## Životni ciklus veze
-
-`ConnectAsync` ne prijavljuje uspjeh odmah nakon otvaranja TCP socketa. Čeka dok simulator ne pošalje:
+`ConnectAsync` završava tek nakon što simulator pošalje obavezni handshake:
 
 ```text
 *HELLO ONX-100 FW:2.13
 ```
 
-Stanje veze prelazi u `Connected` tek nakon uspješnog handshakea.
+Odgovor `*BUSY` znači da drugi klijent već koristi jedinu dostupnu sesiju. Poruka `BYE` nakon neaktivnosti, prisilno zatvaranje socketa i ostali udaljeni prekidi veze prekidaju operacije na čekanju te upravljački program prelazi u stanje `Disconnected`.
 
-Poruka `*BUSY` znači da drugi klijent već koristi jedinu podržanu sesiju. Driver to tretira kao odbijeni pokušaj povezivanja, zatvara transport i prepušta retry/backoff politiku pozivatelju.
+### Prijelazi napajanja
 
-Idle `BYE`, prisilno zatvaranje socketa i ostali udaljeni prekidi veze odmah završavaju pending operacije greškom te prebacuju driver u stanje `Disconnected`.
-
-## Prijelazi napajanja
-
-Promjene napajanja asinkrone su operacije uređaja:
+Promjene napajanja su asinkrone:
 
 ```text
 OFF -> WARM -> ON
 ON  -> COOL -> OFF
 ```
 
-`PWR ON` ili `PWR OFF` vraća `OK` prije nego što je fizički prijelaz završen. Driver zato završava `PowerOnAsync` i `PowerOffAsync` tek nakon odgovarajućeg završnog eventa:
+`PWR ON` i `PWR OFF` vraćaju `OK` prije dovršetka fizičkog prijelaza. Odgovarajuća operacija upravljačkog programa završava tek nakon završnog događaja `EVT PWR ON` ili `EVT PWR OFF`.
 
-```text
-EVT PWR ON
-EVT PWR OFF
-```
+### Pravila isteka vremena i oporavka
 
-`PowerTransitionTimeout` odvojen je od običnog command timeouta.
+Protokol nema identifikatore zahtjeva. Zakašnjeli odgovor naredbe kojoj je isteklo vrijeme ne smije se prihvatiti kao odgovor na neku kasniju naredbu. Zbog toga istek vremena ili otkazivanje nakon slanja naredbe poništava trenutačnu sesiju.
 
-Završni power event tretira se kao autoritativan čak i kada stigne prije potvrde settera.
+API servis primjenjuje pravila oporavka prilagođena vrsti operacije:
 
-## Politika timeouta i cancellationa
-
-Simulator može obraditi naredbu, ali namjerno odbaciti njezin odgovor. TCP veza nakon toga može ostati otvorena.
-
-Međutim, protokol nema identifikator zahtjeva. Zakašnjeli odgovor naredbe koja je timeoutala mogao bi se pogrešno prihvatiti kao odgovor na kasniju naredbu istog tipa. Zbog toga:
-
-- command timeout invalidira i zatvara trenutačnu sesiju drivera
-- nova naredba nije dopuštena dok pozivatelj ne napravi reconnect
-- cancellation nakon početka slanja slijedi isto pravilo
-- cancellation dok poziv samo čeka serijalizirani execution lock ne invalidira aktivnu sesiju
-
-### Timeout queryja
-
-Napraviti reconnect i ponoviti query u novoj sesiji.
-
-### Timeout settera
-
-Ne ponavljati setter naslijepo. Uređaj ga je možda već primijenio prije nego što je potvrda odbačena.
-
-Potrebno je napraviti reconnect i odgovarajućim queryjem provjeriti stvarno stanje.
-
-Primjer oporavka:
-
-```csharp
-try
-{
-    await device.SetVolumeAsync(50);
-}
-catch (Onx100TimeoutException)
-{
-    await device.ConnectAsync();
-    int actualVolume = await device.GetVolumeAsync();
-
-    Console.WriteLine($"Volume after reconnect: {actualVolume}");
-}
-```
-
-## Obrada grešaka
-
-Driver izlaže protokolno specifične iznimke u namespaceu `Onx100.Driver.Exceptions`:
-
-| Iznimka                  | Značenje                                                             |
-|--------------------------|----------------------------------------------------------------------|
-| `Onx100CommandException` | Uređaj je vratio protokolni `ERR` odgovor.                           |
-| `Onx100TimeoutException` | Naredba ili prijelaz napajanja prekoračili su konfigurirani timeout. |
-
-Greške transporta i udaljene sesije izlažu se kao I/O iznimke. Pozivanje command metoda dok driver nije spojen završava greškom nevaljane operacije.
-
-Značenja protokolnih grešaka i opaženo ponašanje simulatora dokumentirani su u [PROTOCOL.md](PROTOCOL.md).
+- upiti se ponovno spajaju i pokušavaju još jednom
+- operacije postavljanja ponovno se spajaju, dohvaćaju stvarno stanje i ponavljaju naredbu samo ako je potrebno
+- operacije napajanja ponovno se spajaju i provjeravaju trenutačno stanje napajanja prije nastavka
 
 ## Pokrivenost testovima
 
-Automatizirani testni skup, među ostalim, pokriva:
+Skup testova između ostalog pokriva:
 
 - fragmentaciju poruka i više poruka u jednom čitanju
 - parsiranje protokola i formatiranje naredbi
 - valjane odgovore i `ERR 01/02/03`
-- neželjene signal i power evente
-- serijalizaciju naredbi i concurrency stress test
-- odbačene query i setter odgovore
-- zakašnjele odgovore nakon timeouta
-- cancellation prije i nakon slanja
-- udaljeni prekid veze tijekom pending naredbe
-- udaljeni prekid veze tijekom prijelaza napajanja
-- `BYE` i `*BUSY`
-- izostanak `*HELLO` handshakea
-- malformed i nepoznate poruke
-- race condition između power eventa i potvrde
-- dispose tijekom aktivnih operacija
-- iznimke iz korisničkih event handlera
-- reconnect nakon idle ili prisilnog prekida
+- neželjene događaje signala i napajanja
+- serijalizaciju naredbi i stres-testove konkurentnosti
+- odbačene i zakašnjele odgovore
+- otkazivanje prije i nakon slanja naredbe
+- udaljene prekide veze i `BYE`
+- `*BUSY` i izostanak `*HELLO` poruke
+- neispravne i nepoznate poruke
+- race condition situacije između potvrde naredbe i događaja napajanja
+- oslobađanje resursa tijekom aktivnih operacija
+- ponovno spajanje nakon neaktivnosti ili prisilnog prekida
 
-Ručna provjera protiv simulatora također je uspješno završena:
-
-- idle disconnect i reconnect
-- prekid simulatora i reconnect nakon restarta
-- 100 connect/query/disconnect ciklusa
-- namjerno odbačeni odgovor tijekom cycle testa
-- nepromijenjen broj process handleova kroz cycle test
-- završni end-to-end demo s izlaznim kodom `0`
-
-Tijekom tih testova nije opažen deadlock, zaglavljena receive petlja ni indikacija curenja resursa.
+Ručna provjera dodatno je obuhvatila ponovljene cikluse spajanja, upita i prekida veze, ponovno pokretanje simulatora, odbačene odgovore, postupke oporavka te integriranu React/API aplikaciju.
 
 ## Poznata ograničenja
 
-- simulator podržava samo jedan aktivni TCP klijent
-- driver se ne reconnecta automatski niti automatski ponavlja naredbe
-- naredba koja timeouta ili bude otkazana nakon početka slanja zahtijeva novu vezu
-- rezultat settera neodređen je ako je njegova potvrda izgubljena
-- input operacije nisu dostupne dok je uređaj isključen, u zagrijavanju ili u hlađenju
-- ponašanje protocol console aplikacije dijagnostičko je i nije dio višekratno upotrebljivog API-ja drivera
+- simulator podržava samo jednu aktivnu TCP vezu
+- operacije nad ulazom nisu dostupne dok je uređaj isključen ili u stanju zagrijavanja odnosno hlađenja
+- izostanak završnog događaja napajanja može uzrokovati istek vremena iako je simulator promijenio stanje
+- ponovno spajanje neposredno nakon takvog isteka vremena može privremeno dobiti `*BUSY` dok simulator ne oslobodi prethodnu sesiju
+- upravljački program niske razine namjerno prepušta pravila automatskog ponavljanja pozivatelju; API i demo imaju vlastita sigurna pravila oporavka
+- protokolna konzola dijagnostički je alat i nije dio javnog integracijskog sučelja
 
-## Referenca protokola
+## Dodatna dokumentacija
 
-Detalji transporta, sintakse naredbi, prijelaza stanja, formata eventa, odgovora s greškom, odbacivanja odgovora i implikacija za implementaciju nalaze se u [PROTOCOL.md](PROTOCOL.md).
+- [BUILDING.md](BUILDING.md) — upute za buildanje, testiranje i pokretanje
+- [PROTOCOL.md](PROTOCOL.md) — opaženo ponašanje protokola i posljedice za implementaciju
