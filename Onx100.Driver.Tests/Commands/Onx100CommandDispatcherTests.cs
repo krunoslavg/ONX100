@@ -13,8 +13,8 @@ namespace Onx100.Driver.Tests.Commands
         public async Task ExecuteAsync_ExpectedResponse_SendsCommandAndReturnsResponse()
         {
             FakeOnx100Transport transport = new FakeOnx100Transport();
-            Onx100CommandDispatcher dispatcher = new Onx100CommandDispatcher(transport, TimeSpan.FromSeconds(1));
-            Onx100ProtocolMessage? expectedResponse = CreateMessage(Onx100MessageKind.VolumeResponse);
+            Onx100CommandManager dispatcher = new Onx100CommandManager(transport, TimeSpan.FromSeconds(1));
+            Onx100InboundMessage? expectedResponse = CreateMessage(Onx100MessageKind.VolumeResponse);
 
             transport.OnSendAsync = (_, _) =>
             {
@@ -22,7 +22,7 @@ namespace Onx100.Driver.Tests.Commands
                 return Task.CompletedTask;
             };
 
-            Onx100ProtocolMessage? response = await dispatcher.ExecuteAsync("VOL ?\r", Onx100MessageKind.VolumeResponse);
+            Onx100InboundMessage? response = await dispatcher.ExecuteAsync("VOL ?\r", Onx100MessageKind.VolumeResponse);
 
             Assert.Same(expectedResponse, response);
             Assert.Single(transport.SentData);
@@ -33,9 +33,9 @@ namespace Onx100.Driver.Tests.Commands
         public async Task ExecuteAsync_UnsolicitedEvent_DoesNotConsumePendingResponse()
         {
             FakeOnx100Transport transport = new FakeOnx100Transport();
-            Onx100CommandDispatcher dispatcher = new Onx100CommandDispatcher(transport, TimeSpan.FromSeconds(1));
-            Onx100ProtocolMessage? signalEvent = CreateMessage(Onx100MessageKind.SignalEvent);
-            Onx100ProtocolMessage? expectedResponse = CreateMessage(Onx100MessageKind.PowerResponse);
+            Onx100CommandManager dispatcher = new Onx100CommandManager(transport, TimeSpan.FromSeconds(1));
+            Onx100InboundMessage? signalEvent = CreateMessage(Onx100MessageKind.SignalEvent);
+            Onx100InboundMessage? expectedResponse = CreateMessage(Onx100MessageKind.PowerResponse);
 
             transport.OnSendAsync = (_, _) =>
             {
@@ -45,7 +45,7 @@ namespace Onx100.Driver.Tests.Commands
                 return Task.CompletedTask;
             };
 
-            Onx100ProtocolMessage? response = await dispatcher.ExecuteAsync("PWR ?\r", Onx100MessageKind.PowerResponse);
+            Onx100InboundMessage? response = await dispatcher.ExecuteAsync("PWR ?\r", Onx100MessageKind.PowerResponse);
 
             Assert.Same(expectedResponse, response);
         }
@@ -54,11 +54,11 @@ namespace Onx100.Driver.Tests.Commands
         public async Task ExecuteAsync_ErrorResponse_ThrowsCommandException()
         {
             FakeOnx100Transport transport = new FakeOnx100Transport();
-            Onx100CommandDispatcher dispatcher = new Onx100CommandDispatcher(transport, TimeSpan.FromSeconds(1));
+            Onx100CommandManager dispatcher = new Onx100CommandManager(transport, TimeSpan.FromSeconds(1));
 
             transport.OnSendAsync = (_, _) =>
             {
-                dispatcher.TryHandleMessage(new Onx100ProtocolMessage
+                dispatcher.TryHandleMessage(new Onx100InboundMessage
                 {
                     Kind = Onx100MessageKind.ErrorResponse,
                     Raw = "ERR 03",
@@ -78,7 +78,7 @@ namespace Onx100.Driver.Tests.Commands
         public async Task ExecuteAsync_Timeout_InvalidatesSessionUntilReset()
         {
             FakeOnx100Transport transport = new FakeOnx100Transport();
-            Onx100CommandDispatcher dispatcher = new Onx100CommandDispatcher(transport, TimeSpan.FromMilliseconds(100));
+            Onx100CommandManager dispatcher = new Onx100CommandManager(transport, TimeSpan.FromMilliseconds(100));
 
             await Assert.ThrowsAsync<Onx100TimeoutException>(() => dispatcher.ExecuteAsync("PWR ?\r", Onx100MessageKind.PowerResponse));
 
@@ -92,7 +92,7 @@ namespace Onx100.Driver.Tests.Commands
                 return Task.CompletedTask;
             };
 
-            Onx100ProtocolMessage response = await dispatcher.ExecuteAsync("MUTE ON\r", Onx100MessageKind.OkResponse);
+            Onx100InboundMessage response = await dispatcher.ExecuteAsync("MUTE ON\r", Onx100MessageKind.OkResponse);
 
             Assert.Equal(Onx100MessageKind.OkResponse, response.Kind);
         }
@@ -101,7 +101,7 @@ namespace Onx100.Driver.Tests.Commands
         public async Task TryFailPendingCommand_PropagatesExceptionToCaller()
         {
             FakeOnx100Transport transport = new FakeOnx100Transport();
-            Onx100CommandDispatcher dispatcher = new Onx100CommandDispatcher(transport, TimeSpan.FromSeconds(1));
+            Onx100CommandManager dispatcher = new Onx100CommandManager(transport, TimeSpan.FromSeconds(1));
             IOException expectedException = new IOException("Connection was closed.");
 
             transport.OnSendAsync = (_, _) =>
@@ -120,7 +120,7 @@ namespace Onx100.Driver.Tests.Commands
         public async Task ExecuteAsync_ConcurrentCalls_SerializesCommands()
         {
             FakeOnx100Transport transport = new FakeOnx100Transport();
-            Onx100CommandDispatcher dispatcher = new Onx100CommandDispatcher(transport, TimeSpan.FromSeconds(1));
+            Onx100CommandManager dispatcher = new Onx100CommandManager(transport, TimeSpan.FromSeconds(1));
             TaskCompletionSource<bool> firstSent = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             TaskCompletionSource<bool> secondSent = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             int sendCount = 0;
@@ -140,11 +140,11 @@ namespace Onx100.Driver.Tests.Commands
                 return Task.CompletedTask;
             };
 
-            Task<Onx100ProtocolMessage> firstTask = dispatcher.ExecuteAsync("PWR ON\r", Onx100MessageKind.OkResponse);
+            Task<Onx100InboundMessage> firstTask = dispatcher.ExecuteAsync("PWR ON\r", Onx100MessageKind.OkResponse);
 
             await firstSent.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
-            Task<Onx100ProtocolMessage> secondTask = dispatcher.ExecuteAsync("MUTE ON\r", Onx100MessageKind.OkResponse);
+            Task<Onx100InboundMessage> secondTask = dispatcher.ExecuteAsync("MUTE ON\r", Onx100MessageKind.OkResponse);
 
             await Assert.ThrowsAsync<TimeoutException>(() => secondSent.Task.WaitAsync(TimeSpan.FromMilliseconds(100)));
 
@@ -159,9 +159,9 @@ namespace Onx100.Driver.Tests.Commands
 
 
         /************* PRIVATE METHODS ***********/
-        private static Onx100ProtocolMessage CreateMessage(Onx100MessageKind kind)
+        private static Onx100InboundMessage CreateMessage(Onx100MessageKind kind)
         {
-            return new Onx100ProtocolMessage
+            return new Onx100InboundMessage
             {
                 Kind = kind,
                 Raw = "TEST"

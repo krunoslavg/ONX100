@@ -12,11 +12,8 @@ namespace Onx100.Driver.Models
         public bool? IsMuted { get; init; }
         public IReadOnlyDictionary<int, Onx100SignalState> SignalStates { get; init; } = new ReadOnlyDictionary<int, Onx100SignalState>(
             new Dictionary<int, Onx100SignalState> {
-                [1] = Onx100SignalState.Unknown,
-                [2] = Onx100SignalState.Unknown,
-                [3] = Onx100SignalState.Unknown,
-                [4] = Onx100SignalState.Unknown
-            });
-            
+                [1] = Onx100SignalState.Unknown, [2] = Onx100SignalState.Unknown, [3] = Onx100SignalState.Unknown, [4] = Onx100SignalState.Unknown 
+            }
+        );            
     }
 }

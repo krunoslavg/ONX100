@@ -2,7 +2,7 @@
 {
     internal interface IOnx100Transport : IAsyncDisposable
     {
-        /********** PUBLIC FUNCTIONS ***************/
+        /********** PUBLIC METHODS ***************/
         Task ConnectAsync(string host, int port, CancellationToken cancellationToken = default);
         Task DisconnectAsync(CancellationToken cancellationToken = default);
         Task SendAsync(ReadOnlyMemory<byte> data,  CancellationToken cancellationToken = default);

@@ -2,7 +2,7 @@
 
 namespace Onx100.Driver.Transport
 {
-    internal sealed class Onx100MessageFramer
+    internal sealed class Onx100MessageAssembler
     {
         /******** PRIVATE MEMBERS ************/
         private const string MessageTerminator = "\r\n";
@@ -10,7 +10,7 @@ namespace Onx100.Driver.Transport
 
         
         /******** PUBLIC FUNCTIONS ************/
-        public IReadOnlyList<string> Append(ReadOnlySpan<byte> data)
+        public IReadOnlyList<string> AppendBytes(ReadOnlySpan<byte> data)
         { 
             if (data.IsEmpty)
                 return Array.Empty<string>();
@@ -19,7 +19,7 @@ namespace Onx100.Driver.Transport
 
             List<string> messages = new List<string>();
 
-            while (TryExtractMessage(out string message))
+            while (TryExtractCompleteMessage(out string message))
                 messages.Add(message);
 
             return messages;
@@ -32,8 +32,8 @@ namespace Onx100.Driver.Transport
 
 
         /******** PRIVATE FUNCTIONS ************/
-        private bool TryExtractMessage(out string message) { 
-            int terminatorIndex = FindTerminatorIndex();
+        private bool TryExtractCompleteMessage(out string message) { 
+            int terminatorIndex = FindMessageTerminatorIndex();
 
             if (terminatorIndex < 0)
             {
@@ -48,7 +48,7 @@ namespace Onx100.Driver.Transport
             return true;
         }
 
-        private int FindTerminatorIndex() {
+        private int FindMessageTerminatorIndex() {
             for (int i = 0; i < buffer.Length - 1; i++)
             {
                 if (buffer[i] == '\r' && buffer[i + 1] == '\n')

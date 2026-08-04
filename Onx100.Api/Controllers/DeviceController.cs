@@ -70,7 +70,7 @@ public sealed class DeviceController : ControllerBase
             return BadRequest(new ApiErrorResponse("invalid_argument", "Input must be between 1 and 4."));
         }
 
-        await deviceService.SelectInputAsync(input, cancellationToken);
+        await deviceService.SetInputAsync(input, cancellationToken);
         return Ok(CreateStateResponse());
     }
 

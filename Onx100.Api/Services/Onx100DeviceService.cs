@@ -55,13 +55,19 @@ public sealed class Onx100DeviceService : IOnx100DeviceService
         return ExecuteAsync(token => device.DisconnectAsync(token), cancellationToken);
     }
 
-    public Task PowerOnAsync(CancellationToken cancellationToken = default) => ExecuteConnectedAsync(token => ExecutePowerOperationWithRecoveryAsync(device.PowerOnAsync, token), cancellationToken);
-
-    public Task PowerOffAsync(CancellationToken cancellationToken = default) => ExecuteConnectedAsync(token => ExecutePowerOperationWithRecoveryAsync(device.PowerOffAsync, token), cancellationToken);
-
-    public Task SelectInputAsync(int input, CancellationToken cancellationToken = default)
+    public Task PowerOnAsync(CancellationToken cancellationToken = default)
     {
-        return ExecuteConnectedAsync(token => SelectInputWithRecoveryAsync(input, token), cancellationToken);
+        return ExecuteConnectedAsync(token => ExecutePowerOperationWithRecoveryAsync(device.PowerOnAsync, token), cancellationToken);
+    }
+
+    public Task PowerOffAsync(CancellationToken cancellationToken = default)
+    {
+        return ExecuteConnectedAsync(token => ExecutePowerOperationWithRecoveryAsync(device.PowerOffAsync, token), cancellationToken);
+    }
+    
+    public Task SetInputAsync(int input, CancellationToken cancellationToken = default)
+    {
+        return ExecuteConnectedAsync(token => SetInputWithRecoveryAsync(input, token), cancellationToken);
     }
 
     public Task SetVolumeAsync(int volume, CancellationToken cancellationToken = default)
@@ -107,8 +113,25 @@ public sealed class Onx100DeviceService : IOnx100DeviceService
         }
     }
 
-    
+
     /******************** PRIVATE  METHODS ********************/
+    private async Task ExecuteAsync(Func<CancellationToken, Task> operation, CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+
+        await operationLock.WaitAsync(cancellationToken);
+
+        try
+        {
+            ThrowIfDisposed();
+            await operation(cancellationToken);
+        }
+        finally
+        {
+            operationLock.Release();
+        }
+    }
+
     private async Task<Onx100DeviceState> RefreshStateWithRecoveryAsync(CancellationToken cancellationToken)
     {
         try
@@ -136,24 +159,7 @@ public sealed class Onx100DeviceService : IOnx100DeviceService
 
         return device.DeviceState;
     }
-
-    private async Task ExecuteAsync(Func<CancellationToken, Task> operation, CancellationToken cancellationToken)
-    {
-        ThrowIfDisposed();
-
-        await operationLock.WaitAsync(cancellationToken);
-
-        try
-        {
-            ThrowIfDisposed();
-            await operation(cancellationToken);
-        }
-        finally
-        {
-            operationLock.Release();
-        }
-    }
-      
+            
     private async Task EnsureConnectedAsync(CancellationToken cancellationToken)
     {
         if (device.ConnectionState == Onx100ConnectionState.Connected)
@@ -258,7 +264,7 @@ public sealed class Onx100DeviceService : IOnx100DeviceService
         }
     }
     
-    private async Task SelectInputWithRecoveryAsync(int input, CancellationToken cancellationToken)
+    private async Task SetInputWithRecoveryAsync(int input, CancellationToken cancellationToken)
     {
         try
         {

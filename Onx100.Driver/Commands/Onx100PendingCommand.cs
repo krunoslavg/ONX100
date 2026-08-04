@@ -2,20 +2,20 @@
 
 namespace Onx100.Driver.Commands
 {
-    internal sealed class PendingCommand
+    internal sealed class Onx100PendingCommand
     {
         /************* PRIVATE MEMBERS **************/
-        private readonly TaskCompletionSource<Onx100ProtocolMessage> completionSource = new TaskCompletionSource<Onx100ProtocolMessage> ();
+        private readonly TaskCompletionSource<Onx100InboundMessage> completionSource = new TaskCompletionSource<Onx100InboundMessage> ();
 
         
         /************* PUBLIC PROPERTIES **************/
         public string Command { get; }
         public Onx100MessageKind ExpectedResponseKind { get; }
-        public Task<Onx100ProtocolMessage> ResponseTask => completionSource.Task;
+        public Task<Onx100InboundMessage> ResponseTask => completionSource.Task;
 
 
         /************* CONSTRUCTOR **************/
-        public PendingCommand(string command, Onx100MessageKind expectedMessageKind)
+        public Onx100PendingCommand(string command, Onx100MessageKind expectedMessageKind)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(command);
 
@@ -29,13 +29,13 @@ namespace Onx100.Driver.Commands
 
 
         /************* PUBLIC METHODS **************/
-        public bool CanAccept(Onx100ProtocolMessage message)
+        public bool CanAccept(Onx100InboundMessage message)
         { 
             ArgumentNullException.ThrowIfNull(message);
             return message.Kind == ExpectedResponseKind || message.Kind == Onx100MessageKind.ErrorResponse;
         }
 
-        public bool TrySetResponse(Onx100ProtocolMessage message) 
+        public bool TrySetResponse(Onx100InboundMessage message) 
         { 
             ArgumentNullException.ThrowIfNull(message);
 

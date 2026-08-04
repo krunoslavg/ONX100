@@ -6,19 +6,19 @@ using System.Text;
 
 namespace Onx100.Driver.Commands
 {
-    internal class Onx100CommandDispatcher
+    internal class Onx100CommandManager
     {
         /********* PRIVATE MEMEBERS ***********/
         private readonly IOnx100Transport transport;
         private readonly TimeSpan defaultTimeout;
         private readonly SemaphoreSlim executionLock = new SemaphoreSlim(1, 1);
         private readonly object pendingLock = new();
-        private PendingCommand? pendingCommand;        
+        private Onx100PendingCommand? pendingCommand;        
         private bool sessionInvalidated;
 
 
         /********* CONSTRUCTOR ***********/
-        public Onx100CommandDispatcher(IOnx100Transport transport, TimeSpan defaultTimeout)
+        public Onx100CommandManager(IOnx100Transport transport, TimeSpan defaultTimeout)
         {
             ArgumentNullException.ThrowIfNull(transport);
 
@@ -31,7 +31,7 @@ namespace Onx100.Driver.Commands
 
 
         /********* PUBLIC METHODS ***********/
-        public async Task<Onx100ProtocolMessage> ExecuteAsync(string command, Onx100MessageKind expectedResponseKind, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+        public async Task<Onx100InboundMessage> ExecuteAsync(string command, Onx100MessageKind expectedResponseKind, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(command);
 
@@ -47,7 +47,7 @@ namespace Onx100.Driver.Commands
                 if (IsSessionInvalidated())
                     throw new InvalidOperationException("The protocol session is desynchronized. Reconnect before sending another command.");
 
-                PendingCommand pendingCommand = new PendingCommand(command, expectedResponseKind);
+                Onx100PendingCommand pendingCommand = new Onx100PendingCommand(command, expectedResponseKind);
 
                 SetPendingCommand(pendingCommand);
 
@@ -64,7 +64,7 @@ namespace Onx100.Driver.Commands
 
                         await transport.SendAsync(data, cancellationToken).ConfigureAwait(false);
 
-                        Onx100ProtocolMessage response;
+                        Onx100InboundMessage response;
 
                         try
                         {
@@ -102,11 +102,11 @@ namespace Onx100.Driver.Commands
             }
         }
 
-        public bool TryHandleMessage(Onx100ProtocolMessage message)
+        public bool TryHandleMessage(Onx100InboundMessage message)
         {
             ArgumentNullException.ThrowIfNull(message);
 
-            PendingCommand? command;
+            Onx100PendingCommand? command;
 
             lock (pendingLock)            
                 command = pendingCommand;
@@ -119,7 +119,7 @@ namespace Onx100.Driver.Commands
         {
             ArgumentNullException.ThrowIfNull(exception);
 
-            PendingCommand? command;
+            Onx100PendingCommand? command;
 
             lock (pendingLock)            
                 command = pendingCommand;            
@@ -153,7 +153,7 @@ namespace Onx100.Driver.Commands
         }
 
         /********* PRIVATE METHODS ***********/
-        private void SetPendingCommand(PendingCommand command)
+        private void SetPendingCommand(Onx100PendingCommand command)
         {
             lock (pendingLock)
             {
@@ -164,7 +164,7 @@ namespace Onx100.Driver.Commands
             }
         }
 
-        private void ClearPendingCommand(PendingCommand command)
+        private void ClearPendingCommand(Onx100PendingCommand command)
         {
             lock (pendingLock)
             {

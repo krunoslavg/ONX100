@@ -9,7 +9,6 @@ namespace Onx100.Driver.Transport
         private NetworkStream? clientStream;
 
 
-
         /********** PUBLIC INTERFACE FUNCTIONS ***************/
         public async Task ConnectAsync(string host, int port, CancellationToken cancellationToken = default)
         {

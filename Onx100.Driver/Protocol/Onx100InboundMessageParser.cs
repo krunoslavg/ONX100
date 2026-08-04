@@ -8,11 +8,14 @@ using System.Threading.Tasks;
 
 namespace Onx100.Driver.Protocol
 {
-    internal sealed class Onx100ProtocolParser
+    internal sealed class Onx100InboundMessageParser
     {
+        /******************* PRIVATE MEMBERS ****************/
         private const string HelloPrefix = "*HELLO ONX-100 FW:";
 
-        public Onx100ProtocolMessage Parse(string raw)
+        
+        /******************* PUBLIC METHODS ***********/
+        public Onx100InboundMessage Parse(string raw)
         {
             ArgumentNullException.ThrowIfNull(raw);
 
@@ -37,7 +40,7 @@ namespace Onx100.Driver.Protocol
 
                 if (!string.IsNullOrWhiteSpace(firmwareVersion))
                 {
-                    return new Onx100ProtocolMessage
+                    return new Onx100InboundMessage
                     {
                         Kind = Onx100MessageKind.Hello,
                         Raw = raw,
@@ -62,11 +65,13 @@ namespace Onx100.Driver.Protocol
             return Create(raw, Onx100MessageKind.Unknown);
         }
 
-        private static bool TryParseError(string[] parts, string raw, out Onx100ProtocolMessage message)
+
+        /******************* PRIVATE METHODS **************/
+        private static bool TryParseError(string[] parts, string raw, out Onx100InboundMessage message)
         {
             if (parts.Length == 2 && parts[0] == "ERR" && int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var errorCode))
             {
-                message = new Onx100ProtocolMessage
+                message = new Onx100InboundMessage
                 {
                     Kind = Onx100MessageKind.ErrorResponse,
                     Raw = raw,
@@ -80,11 +85,11 @@ namespace Onx100.Driver.Protocol
             return false;
         }
 
-        private static bool TryParsePowerResponse(string[] parts, string raw, out Onx100ProtocolMessage message)
+        private static bool TryParsePowerResponse(string[] parts, string raw, out Onx100InboundMessage message)
         {
             if (parts.Length == 2 && parts[0] == "PWR" && TryParsePowerState(parts[1], out var powerState))
             {
-                message = new Onx100ProtocolMessage
+                message = new Onx100InboundMessage
                 {
                     Kind = Onx100MessageKind.PowerResponse,
                     Raw = raw,
@@ -98,7 +103,7 @@ namespace Onx100.Driver.Protocol
             return false;
         }
 
-        private static bool TryParseInputResponse(string[] parts, string raw, out Onx100ProtocolMessage message)
+        private static bool TryParseInputResponse(string[] parts, string raw, out Onx100InboundMessage message)
         {
             if (parts.Length == 2 &&parts[0] == "IN" &&
                 int.TryParse(
@@ -108,7 +113,7 @@ namespace Onx100.Driver.Protocol
                     out var input) &&
                 input is >= 1 and <= 4)
             {
-                message = new Onx100ProtocolMessage
+                message = new Onx100InboundMessage
                 {
                     Kind = Onx100MessageKind.InputResponse,
                     Raw = raw,
@@ -122,12 +127,12 @@ namespace Onx100.Driver.Protocol
             return false;
         }
         
-        private static bool TryParseVolumeResponse(string[] parts, string raw, out Onx100ProtocolMessage message)
+        private static bool TryParseVolumeResponse(string[] parts, string raw, out Onx100InboundMessage message)
         {
             if (parts.Length == 2 && parts[0] == "VOL" && int.TryParse(parts[1], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var volume) 
                 && volume is >= 0 and <= 100)
             {
-                message = new Onx100ProtocolMessage
+                message = new Onx100InboundMessage
                 {
                     Kind = Onx100MessageKind.VolumeResponse,
                     Raw = raw,
@@ -141,13 +146,13 @@ namespace Onx100.Driver.Protocol
             return false;
         }
 
-        private static bool TryParseMuteResponse(string[] parts, string raw, out Onx100ProtocolMessage message)
+        private static bool TryParseMuteResponse(string[] parts, string raw, out Onx100InboundMessage message)
         {
             if (parts.Length == 2 && parts[0] == "MUTE")
             {
                 if (parts[1] == "ON")
                 {
-                    message = new Onx100ProtocolMessage
+                    message = new Onx100InboundMessage
                     {
                         Kind = Onx100MessageKind.MuteResponse,
                         Raw = raw,
@@ -159,7 +164,7 @@ namespace Onx100.Driver.Protocol
 
                 if (parts[1] == "OFF")
                 {
-                    message = new Onx100ProtocolMessage
+                    message = new Onx100InboundMessage
                     {
                         Kind = Onx100MessageKind.MuteResponse,
                         Raw = raw,
@@ -174,11 +179,11 @@ namespace Onx100.Driver.Protocol
             return false;
         }
 
-        private static bool TryParsePowerEvent(string[] parts, string raw, out Onx100ProtocolMessage message)
+        private static bool TryParsePowerEvent(string[] parts, string raw, out Onx100InboundMessage message)
         {
             if (parts.Length == 3 && parts[0] == "EVT" && parts[1] == "PWR" && TryParsePowerState(parts[2], out var powerState))
             {
-                message = new Onx100ProtocolMessage
+                message = new Onx100InboundMessage
                 {
                     Kind = Onx100MessageKind.PowerEvent,
                     Raw = raw,
@@ -192,13 +197,13 @@ namespace Onx100.Driver.Protocol
             return false;
         }
 
-        private static bool TryParseSignalEvent(string[] parts, string raw, out Onx100ProtocolMessage message)
+        private static bool TryParseSignalEvent(string[] parts, string raw, out Onx100InboundMessage message)
         {
             if (parts.Length == 4 && parts[0] == "EVT" && parts[1] == "SIGNAL" &&
                 int.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out var input) && input is >= 1 and <= 4 &&
                 TryParseSignalState(parts[3], out var signalState))
             {
-                message = new Onx100ProtocolMessage
+                message = new Onx100InboundMessage
                 {
                     Kind = Onx100MessageKind.SignalEvent,
                     Raw = raw,
@@ -239,9 +244,9 @@ namespace Onx100.Driver.Protocol
             return state != Onx100SignalState.Unknown;
         }
 
-        private static Onx100ProtocolMessage Create(string raw, Onx100MessageKind onx100MessageKind) 
+        private static Onx100InboundMessage Create(string raw, Onx100MessageKind onx100MessageKind) 
         {
-            return new Onx100ProtocolMessage { Kind = onx100MessageKind, Raw = raw };
+            return new Onx100InboundMessage { Kind = onx100MessageKind, Raw = raw };
         }
     }
 }

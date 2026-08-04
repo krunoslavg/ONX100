@@ -12,7 +12,7 @@ namespace Onx100.Driver.Tests.Commands
         [Fact]
         public void Constructor_ValidArguments_StoresCommandAndExpectedKind()
         {
-            var pending = new PendingCommand("VOL ?\r",Onx100MessageKind.VolumeResponse);
+            var pending = new Onx100PendingCommand("VOL ?\r",Onx100MessageKind.VolumeResponse);
 
             Assert.Equal("VOL ?\r", pending.Command);
             Assert.Equal(Onx100MessageKind.VolumeResponse, pending.ExpectedResponseKind);
@@ -21,20 +21,20 @@ namespace Onx100.Driver.Tests.Commands
         [Fact]
         public void Constructor_EmptyCommand_ThrowsArgumentException()
         {
-            Assert.Throws<ArgumentException>(() => new PendingCommand(" ", Onx100MessageKind.OkResponse));
+            Assert.Throws<ArgumentException>(() => new Onx100PendingCommand(" ", Onx100MessageKind.OkResponse));
         }
 
         [Fact]
         public void Constructor_NonResponseKind_ThrowsArgumentOutOfRangeException()
         {
-            Assert.Throws<ArgumentOutOfRangeException>(() => new PendingCommand("PWR ON\r", Onx100MessageKind.PowerEvent));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new Onx100PendingCommand("PWR ON\r", Onx100MessageKind.PowerEvent));
         }
 
         [Fact]
         public void CanAccept_ExpectedResponse_ReturnsTrue()
         {
-            PendingCommand pending = new PendingCommand("PWR ?\r", Onx100MessageKind.PowerResponse);
-            Onx100ProtocolMessage? message = CreateMessage(Onx100MessageKind.PowerResponse);
+            Onx100PendingCommand pending = new Onx100PendingCommand("PWR ?\r", Onx100MessageKind.PowerResponse);
+            Onx100InboundMessage? message = CreateMessage(Onx100MessageKind.PowerResponse);
 
             Assert.True(pending.CanAccept(message));
         }
@@ -42,8 +42,8 @@ namespace Onx100.Driver.Tests.Commands
         [Fact]
         public void CanAccept_ErrorResponse_ReturnsTrue()
         {
-            PendingCommand pending = new PendingCommand("IN ?\r", Onx100MessageKind.InputResponse);
-            Onx100ProtocolMessage? message = CreateMessage(Onx100MessageKind.ErrorResponse);
+            Onx100PendingCommand pending = new Onx100PendingCommand("IN ?\r", Onx100MessageKind.InputResponse);
+            Onx100InboundMessage? message = CreateMessage(Onx100MessageKind.ErrorResponse);
 
             Assert.True(pending.CanAccept(message));
         }
@@ -51,8 +51,8 @@ namespace Onx100.Driver.Tests.Commands
         [Fact]
         public void CanAccept_UnsolicitedEvent_ReturnsFalse()
         {
-            PendingCommand pending = new PendingCommand("PWR ?\r", Onx100MessageKind.PowerResponse);
-            Onx100ProtocolMessage? message = CreateMessage(Onx100MessageKind.SignalEvent);
+            Onx100PendingCommand pending = new Onx100PendingCommand("PWR ?\r", Onx100MessageKind.PowerResponse);
+            Onx100InboundMessage? message = CreateMessage(Onx100MessageKind.SignalEvent);
 
             Assert.False(pending.CanAccept(message));
         }
@@ -60,8 +60,8 @@ namespace Onx100.Driver.Tests.Commands
         [Fact]
         public async Task TrySetResponse_AcceptedMessage_CompletesResponseTask()
         {
-            PendingCommand pending = new PendingCommand("MUTE ?\r", Onx100MessageKind.MuteResponse);
-            Onx100ProtocolMessage? message = CreateMessage(Onx100MessageKind.MuteResponse);
+            Onx100PendingCommand pending = new Onx100PendingCommand("MUTE ?\r", Onx100MessageKind.MuteResponse);
+            Onx100InboundMessage? message = CreateMessage(Onx100MessageKind.MuteResponse);
 
             Assert.True(pending.TrySetResponse(message));
             Assert.Same(message, await pending.ResponseTask);
@@ -70,7 +70,7 @@ namespace Onx100.Driver.Tests.Commands
         [Fact]
         public async Task TrySetException_CompletesResponseTaskWithException()
         {
-            PendingCommand pending = new PendingCommand("VOL ?\r", Onx100MessageKind.VolumeResponse);
+            Onx100PendingCommand pending = new Onx100PendingCommand("VOL ?\r", Onx100MessageKind.VolumeResponse);
             InvalidOperationException? expectedException = new InvalidOperationException("Test failure.");
 
             Assert.True(pending.TrySetException(expectedException));
@@ -83,7 +83,7 @@ namespace Onx100.Driver.Tests.Commands
         [Fact]
         public async Task TrySetCanceled_CancelsResponseTask()
         {
-            PendingCommand pending = new PendingCommand("IN ?\r", Onx100MessageKind.InputResponse);
+            Onx100PendingCommand pending = new Onx100PendingCommand("IN ?\r", Onx100MessageKind.InputResponse);
 
             using CancellationTokenSource cancellationSource = new CancellationTokenSource();
             cancellationSource.Cancel();
@@ -95,9 +95,9 @@ namespace Onx100.Driver.Tests.Commands
 
      
         /*************** PRIVATE METHODS **************/
-        private static Onx100ProtocolMessage CreateMessage(Onx100MessageKind kind)
+        private static Onx100InboundMessage CreateMessage(Onx100MessageKind kind)
         {
-            return new Onx100ProtocolMessage {
+            return new Onx100InboundMessage {
                 Kind = kind,
                 Raw = "TEST"
             };

@@ -4,7 +4,12 @@ namespace Onx100.Driver.Protocol
 {
     internal static class Onx100CommandFormatter
     {
-        private const string Terminator = "\r"; public static string PowerOn()
+        /**************** PRIVATE MEMBERS ******************/
+        private const string Terminator = "\r"; 
+        
+
+        /**************** PUBLIC METHODS **************/
+        public static string PowerOn()
         {
             return $"PWR ON{Terminator}";
         }

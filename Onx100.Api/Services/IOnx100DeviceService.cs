@@ -19,7 +19,7 @@ public interface IOnx100DeviceService : IAsyncDisposable
 
     Task PowerOffAsync(CancellationToken cancellationToken = default);
 
-    Task SelectInputAsync(int input, CancellationToken cancellationToken = default);
+    Task SetInputAsync(int input, CancellationToken cancellationToken = default);
 
     Task SetVolumeAsync(int volume, CancellationToken cancellationToken = default);
 
